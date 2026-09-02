@@ -1650,31 +1650,56 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         COLUMNS = ['ایندکس', 'گزارش']
 
         # ---- Helper: build an analysis sheet ----
-        def buildAnalysisSheet(sheetName, rows):
+        def buildAnalysisSheet(sheetName, rows, viewKey):
+            from openpyxl.drawing.image import Image as XLImage
+            from PIL import Image as PILImage
+            
             ws = wb.create_sheet(sheetName)
-            ws.sheet_view.leftToRight = True
-
-            # Headers
+            ws.sheet_view.rightToLeft = True
+            
+            current_row = 1
+            
+            # === EMBED IMAGE AT TOP ===
+            if imagePaths.get(viewKey) is not None:
+                temp_dir = tempfile.mkdtemp(prefix="fla_xlsx_")
+                out_path = os.path.join(temp_dir, f"{viewKey}_annot.png")
+                if self.createAnnotatedImage(viewKey, imagePaths[viewKey], coords.get(viewKey, {}), out_path):
+                    try:
+                        img = PILImage.open(out_path)
+                        ow, oh = img.size
+                        max_w, max_h = 500, 700
+                        scale = min(max_w / ow, max_h / oh)
+                        img.thumbnail((int(ow * scale), int(oh * scale)), PILImage.LANCZOS)
+                        resized = os.path.join(temp_dir, f"{viewKey}_resized.png")
+                        img.save(resized, 'PNG')
+                        xl_img = XLImage(resized)
+                        xl_img.anchor = f"A{current_row}"
+                        ws.add_image(xl_img)
+                        rows_for_image = max(28, int(img.size[1] / 20))
+                        current_row += rows_for_image + 2
+                    except Exception as e:
+                        logging.error(f"Image embed failed for {viewKey}: {e}")
+            
+            # === HEADERS ===
             for col_idx, col_name in enumerate(COLUMNS, start=1):
-                c = ws.cell(row=1, column=col_idx, value=col_name)
+                c = ws.cell(row=current_row, column=col_idx, value=col_name)
                 c.font = HEADER_FONT
                 c.fill = HEADER_FILL
                 c.alignment = CENTER
                 c.border = BORDER
-
-            # Data rows
-            for row_idx, row in enumerate(rows, start=2):
+            header_row = current_row
+            current_row += 1
+            
+            # === DATA ROWS ===
+            data_start = current_row
+            for row in rows:
                 index_val = row.get('ایندکس', '')
-
-                # Section header row (contains ═══ markers)
                 is_section = index_val.startswith('═══')
-
                 for col_idx, col_name in enumerate(COLUMNS, start=1):
                     value = row.get(col_name, "")
-                    c = ws.cell(row=row_idx, column=col_idx, value=value)
+                    c = ws.cell(row=current_row, column=col_idx, value=value)
                     c.alignment = RIGHT if col_idx != 1 else CENTER
                     c.border = BORDER
-
                     if is_section:
                         c.font = SECTION_FONT
                         c.fill = SECTION_FILL
@@ -1684,46 +1709,30 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                         c.fill = INDEX_FILL
                     else:
                         c.font = CELL_FONT
-
-                # Merge section headers across all columns
                 if is_section:
-                    ws.merge_cells(start_row=row_idx, start_column=1,
-                                   end_row=row_idx, end_column=len(COLUMNS))
-
-            # Vertical merge for grouped index rows
-            self._mergeGroupedRows(ws, rows, col=1)
-
+                    ws.merge_cells(start_row=current_row, start_column=1,
+                                   end_row=current_row, end_column=len(COLUMNS))
+                current_row += 1
+            
             # Column widths
-            # widths = {1: 40, 2: 50, 3: 40, 4: 60}
             widths = {1: 40, 2: 50}
             for col, w in widths.items():
                 ws.column_dimensions[get_column_letter(col)].width = w
-
-            ws.freeze_panes = 'A2'
-            ws.row_dimensions[1].height = 32
-            for i in range(2, len(rows) + 2):
-                ws.row_dimensions[i].height = 40
-
+            ws.row_dimensions[header_row].height = 32
+            
         # ---- Build all analysis sheets ----
         # Delete default sheet, we'll build our own order
         default_sheet = wb.active
         wb.remove(default_sheet)
-
-        # 1. Frontal sheet
-        frontal_rows = self.buildFrontalRows(coords['frontal'], ppm)
-        buildAnalysisSheet("Frontal", frontal_rows)
-
-        # 2. Smile sheet
-        smile_rows = self.buildSmileRows(coords.get('smile', {}), ppm)
-        buildAnalysisSheet("Smile", smile_rows)
-
-        # 3. Profile sheet (single lateral)
-        profile_rows = self.buildProfileRows(coords.get('lateral', {}), ppm)
-        buildAnalysisSheet("Profile", profile_rows)
-
+        
+        buildAnalysisSheet("Frontal", self.buildFrontalRows(coords['frontal'], ppm), 'frontal')
+        buildAnalysisSheet("Right Profile", self.buildProfileRows(coords.get('right', {}), ppm), 'right')
+        buildAnalysisSheet("Left Profile", self.buildProfileRows(coords.get('left', {}), ppm), 'left')
+        buildAnalysisSheet("Smile", self.buildSmileRows(coords.get('smile', {}), ppm), 'smile')
+        
         # 4. Landmarks sheet (annotated images embedded)
-        self._buildLandmarksSheet(wb, coords, imagePaths,
-                                  TITLE_FONT, HEADER_FONT, HEADER_FILL, CENTER, BORDER)
+        # self._buildLandmarksSheet(wb, coords, imagePaths,
+        #                           TITLE_FONT, HEADER_FONT, HEADER_FILL, CENTER, BORDER)
 
         # 5. Information sheet
         self._buildInformationSheet(wb, patientName, doctorName, date, coords,
@@ -1978,7 +1987,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         from reportlab.pdfbase.ttfonts import TTFont # type: ignore
         """Register a Persian-supporting font for PDF. Returns font name."""
         font_name = 'PersianFont'
-
+        
         # Try to find a suitable font on the system
         font_candidates = [
             # Windows
@@ -2139,136 +2148,50 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         story.append(Paragraph(footer_text, body_style))
         story.append(PageBreak())
 
-        # ===== ANNOTATED IMAGES SECTION =====
-        story.append(
-            Paragraph(self._rtl("تصاویر با لندمارک ها و خطوط راهنما"), section_style))
-        story.append(Spacer(1, 0.5*cm))
-
-        view_names = {
-            'frontal': "نمای روبرو (Frontal)",
-            'lateral': "نمای نیمرخ (Lateral Profile)",
-            'smile': "نمای لبخند (Smile)"
-        }
-
+        # ===== INTERLEAVED: image + table per view =====
+        view_order = [
+            ('frontal', "نمای روبرو (Frontal)", self.buildFrontalRows, coords.get('frontal', {})),
+            ('right',   "نمای نیمرخ راست",       self.buildProfileRows, coords.get('right', {})),
+            ('left',    "نمای نیمرخ چپ",         self.buildProfileRows, coords.get('left', {})),
+            ('smile',   "نمای لبخند (Smile)",    self.buildSmileRows,   coords.get('smile', {})),
+        ]
+        
         temp_dir = tempfile.mkdtemp(prefix="fla_pdf_")
-
-        for viewKey in self.VIEW_KEYS:
+        
+        for viewKey, view_title, rowBuilder, viewCoords in view_order:
             if imagePaths.get(viewKey) is None:
                 continue
-
-            # Create annotated image
+            
+            # Section header
+            story.append(Paragraph(self._rtl(view_title), section_style))
+            story.append(Spacer(1, 0.3*cm))
+            
+            # 1. Image
             out_path = os.path.join(temp_dir, f"{viewKey}_pdf.png")
-            success = self.createAnnotatedImage(
-                viewKey, imagePaths[viewKey], coords.get(viewKey, {}), out_path
-            )
-
-            if not success or not os.path.exists(out_path):
-                continue
-
-            # View title
-            story.append(
-                Paragraph(self._rtl(view_names[viewKey]), subsection_style))
-            story.append(Spacer(1, 0.3*cm))
-
-            # Compute image size to fit page
-            try:
-                pil_img = Image.open(out_path)
-                orig_w, orig_h = pil_img.size
-                max_width = 14 * cm
-                max_height = 20 * cm
-                aspect = orig_w / orig_h
-
-                if aspect > (max_width / max_height):
-                    display_w = max_width
-                    display_h = max_width / aspect
-                else:
-                    display_h = max_height
-                    display_w = max_height * aspect
-
-                # Create ReportLab image
-                rl_img = RLImage(out_path, width=display_w, height=display_h)
-                rl_img.hAlign = 'CENTER'
-
-                # Use KeepTogether so image and title stay on same page
-                story.append(KeepTogether([rl_img]))
-                story.append(Spacer(1, 0.5*cm))
-
-            except Exception as e:
-                logging.error(f"Failed to add image {viewKey}: {e}")
-                continue
-
+            if self.createAnnotatedImage(viewKey, imagePaths[viewKey], viewCoords, out_path):
+                try:
+                    pil_img = Image.open(out_path)
+                    ow, oh = pil_img.size
+                    max_w, max_h = 14 * cm, 18 * cm
+                    aspect = ow / oh
+                    if aspect > (max_w / max_h):
+                        dw, dh = max_w, max_w / aspect
+                    else:
+                        dh, dw = max_h, max_h * aspect
+                    rl_img = RLImage(out_path, width=dw, height=dh)
+                    rl_img.hAlign = 'CENTER'
+                    story.append(rl_img)
+                    story.append(Spacer(1, 0.5*cm))
+                except Exception as e:
+                    logging.error(f"PDF image {viewKey} failed: {e}")
+            
+            # 2. Analysis table right after
+            rows = rowBuilder(viewCoords, ppm)
+            if rows:
+                self._addAnalysisTable(story, rows, font_name, bold_font)
+            
             story.append(PageBreak())
-
-        # ===== ANALYSIS RESULTS SECTIONS =====
-
-        # Frontal Analysis
-        frontal_rows = self.buildFrontalRows(coords['frontal'], ppm)
-        if frontal_rows:
-            story.append(
-                Paragraph(self._rtl("تحلیل نمای روبرو"), section_style))
-            story.append(Spacer(1, 0.3*cm))
-            self._addAnalysisTable(story, frontal_rows, font_name, bold_font)
-            story.append(PageBreak())
-
-        # Smile Analysis
-        smile_rows = self.buildSmileRows(coords['smile'], ppm)
-        if smile_rows:
-            story.append(
-                Paragraph(self._rtl("تحلیل نمای لبخند"), section_style))
-            story.append(Spacer(1, 0.3*cm))
-            self._addAnalysisTable(story, smile_rows, font_name, bold_font)
-            story.append(PageBreak())
-
-        # Profile Analysis
-        profile_rows = self.buildProfileRows(coords.get('lateral', {}), ppm)
-        if profile_rows:
-            story.append(Paragraph(self._rtl("تحلیل نمای نیمرخ"), section_style))
-            story.append(Spacer(1, 0.3*cm))
-            self._addAnalysisTable(story, profile_rows, font_name, bold_font)
-            story.append(PageBreak())
-
-        # Landmark coordinates
-        story.append(
-            Paragraph(self._rtl("مختصات لندمارک ها (پیکسل)"), section_style))
-        story.append(Spacer(1, 0.3*cm))
-
-        for viewKey in self.VIEW_KEYS:
-            viewCoords = coords.get(viewKey, {})
-            if not viewCoords:
-                continue
-
-            story.append(
-                Paragraph(self._rtl(view_names[viewKey]), subsection_style))
-            story.append(Spacer(1, 0.2*cm))
-
-            # Coordinates table
-            table_data = [[
-                self._rtl("Y (پیکسل)"),
-                self._rtl("X (پیکسل)"),
-                self._rtl("شماره لندمارک")
-            ]]
-            for num in sorted(viewCoords.keys()):
-                x, y = viewCoords[num]
-                table_data.append([
-                    f"{y:.1f}", f"{x:.1f}", str(num)
-                ])
-
-            coord_table = Table(table_data, colWidths=[4*cm, 4*cm, 4*cm])
-            coord_table.setStyle(TableStyle([
-                ('FONT', (0, 0), (-1, -1), font_name, 10),
-                ('FONT', (0, 0), (-1, 0), bold_font, 11),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1),
-                 [colors.white, colors.HexColor('#F2F2F2')]),
-                ('TOPPADDING', (0, 0), (-1, -1), 5),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ]))
-            story.append(coord_table)
-            story.append(Spacer(1, 0.5*cm))
+            
 
         # Build PDF
         doc.build(story, onFirstPage=self._pdfFooter,
