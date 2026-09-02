@@ -1539,12 +1539,29 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                 draw_segment(coords[1], coords[7], LINE_COLOR, 2)
 
         elif viewKey == 'smile':
-            # Perpendicular midline through midpoint of L1 and L2
+            # Only: line from L1 to L2, and its perpendicular bisector
             if 1 in coords and 2 in coords:
-                mid_x = (coords[1][0] + coords[2][0]) / 2
-                draw_vline(mid_x, MIDLINE_COLOR, 4)
-                draw_segment(coords[1], coords[2], LINE_COLOR, 2)
-
+                # Line L1 → L2
+                draw_segment(coords[1], coords[2], LINE_COLOR, 3)
+                
+                # Midpoint
+                mx = (coords[1][0] + coords[2][0]) / 2
+                my = (coords[1][1] + coords[2][1]) / 2
+                
+                # Direction of L1→L2
+                dx = coords[2][0] - coords[1][0]
+                dy = coords[2][1] - coords[1][1]
+                length = math.sqrt(dx*dx + dy*dy)
+                if length > 0:
+                    # Perpendicular direction (normal)
+                    nx = -dy / length
+                    ny = dx / length
+                    # Extend far enough to span the image
+                    extent = max(W, H)
+                    p1 = (mx + nx * extent, my + ny * extent)
+                    p2 = (mx - nx * extent, my - ny * extent)
+                    draw_segment(p1, p2, MIDLINE_COLOR, 3)
+                    
         elif viewKey == 'lateral':
             # E-line (from L5 to L10) - Slide 68
             if 5 in coords and 10 in coords:
