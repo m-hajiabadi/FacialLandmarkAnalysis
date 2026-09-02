@@ -12,7 +12,6 @@ from slicer.util import VTKObservationMixin # type: ignore
 
 # Safely install dependencies inside setup() rather than top-level import
 def ensure_dependencies():
-    """Install required pip packages safely when needed, without crashing Slicer module discovery."""
     packages = [
         ('openpyxl', 'openpyxl'),
         ('Pillow', 'PIL'),
@@ -20,7 +19,13 @@ def ensure_dependencies():
         ('reportlab', 'reportlab'),
         ('arabic-reshaper', 'arabic_reshaper'),
         ('python-bidi', 'bidi'),
-        ('numpy', 'numpy')
+        ('numpy', 'numpy'),
+        ('torch', 'torch'),
+        ('torchvision', 'torchvision'),
+        ('opencv-python-headless', 'cv2'),
+        ('scipy', 'scipy'),
+        ('scikit-image', 'skimage'),
+        ('tqdm', 'tqdm'),
     ]
     for pkg_name, module_name in packages:
         try:
@@ -68,12 +73,13 @@ class FacialLandmarkAnalysis(ScriptedLoadableModule): # type: ignore
 #
 # type: ignore
 class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationMixin): # type: ignore
-    VIEW_KEYS = ['frontal', 'lateral', 'smile']
-    VIEW_CODES = {'frontal': 'F', 'lateral': 'L', 'smile': 'S'}
+    VIEW_KEYS = ['frontal', 'right', 'left', 'smile']
+    VIEW_CODES = {'frontal': 'F', 'right': 'L', 'left': 'L', 'smile': 'S'}
     VIEW_LABELS_FA = {
         'frontal': 'نمای روبرو (Frontal)',
-        'lateral': 'نمای نیمرخ (Lateral)',
-        'smile': 'نمای لبخند (Smile)',
+        'right':   'نمای نیمرخ راست (Right Profile)',
+        'left':    'نمای نیمرخ چپ (Left Profile)',
+        'smile':   'نمای لبخند (Smile)',
     }
     
     def __init__(self, parent=None):
@@ -137,8 +143,12 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         self._loadBtns = {}
         self._loadLabels = {}
-        btn_texts = {'frontal': 'Frontal', 'lateral': 'Lateral (Right or Left)',
-                     'smile': 'Smile'}
+        btn_texts = {
+            'frontal': 'Frontal',
+            'right': 'Right Profile',
+            'left': 'Left Profile',
+            'smile': 'Smile'
+        }
         for row_idx, vk in enumerate(self.VIEW_KEYS):
             btn = qt.QPushButton(btn_texts[vk])
             btn.connect('clicked()', lambda v=vk: self.onLoadImage(v))
@@ -193,7 +203,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         viewSelectorLayout.addWidget(qt.QLabel("View:"))
         self.viewComboBox = qt.QComboBox()
         self.viewComboBox.addItems([
-            "Frontal View", "Lateral View", "Smile View"
+            "Frontal View", "Right Profile", "Left Profile", "Smile View"
         ])
         self.viewComboBox.connect(
             'currentIndexChanged(int)', self.onViewChanged)
@@ -280,7 +290,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
     def getLandmarksForView(self, viewIndex):
         return [
             self.getFrontalLandmarks(),
-            self.getLateralLandmarks(),
+            self.getLateralLandmarks(),  # right
+            self.getLateralLandmarks(),  # left
             self.getSmileLandmarks()
         ][viewIndex]
 
@@ -362,6 +373,70 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
                 node.GetDisplayNode().SetViewNodeIDs([redSliceNode.GetID()])
 
     # ── Run inference ──
+    def _runInferenceInProcess(self, viewKey, imagePath, out_dir):
+        """Run infer.py inside Slicer's Python (no subprocess)."""
+        import importlib.util
+        
+        # Dynamic import of infer.py
+        spec = importlib.util.spec_from_file_location("infer_module", self._inferScriptPath)
+        infer_mod = importlib.util.module_from_spec(spec)
+        
+        # Add its directory to sys.path so its internal imports work
+        infer_dir = os.path.dirname(self._inferScriptPath)
+        if infer_dir not in sys.path:
+            sys.path.insert(0, infer_dir)
+        # Also add parent (in case infer.py imports from sibling folders)
+        infer_parent = os.path.dirname(infer_dir)
+        if infer_parent not in sys.path:
+            sys.path.insert(0, infer_parent)
+        
+        spec.loader.exec_module(infer_mod)
+        
+        viewCode = self.VIEW_CODES[viewKey]
+        if viewCode == 'F':
+            coarse, fine = self._ckptPaths['f_coarse'], self._ckptPaths['f_fine']
+        elif viewCode == 'L':
+            coarse, fine = self._ckptPaths['l_coarse'], self._ckptPaths['l_fine']
+        else:
+            coarse, fine = self._ckptPaths['s_coarse'], self._ckptPaths['s_fine']
+        
+        # Build args matching infer.py's argparse
+        # NOTE: this assumes infer.py has a `main(args)` or similar entry point.
+        # If not, you may need to call sys.argv approach instead.
+        argv_backup = sys.argv
+        sys.argv = [
+            self._inferScriptPath,
+            '--image', imagePath,
+            '--view', viewCode,
+            '--coarse', coarse,
+            '--fine', fine,
+            '--out_dir', out_dir,
+        ]
+        if viewCode == 'S':
+            sys.argv.extend(['--presence-threshold', self._presenceThresh])
+        
+        try:
+            # Most infer.py scripts have `if __name__ == '__main__': main()`.
+            # Since we exec'd the module (not as __main__), you need infer.py 
+            # to expose a callable. Easiest: re-exec as script:
+            with open(self._inferScriptPath, 'r') as f:
+                code = f.read()
+            exec(compile(code, self._inferScriptPath, 'exec'), {'__name__': '__main__', '__file__': self._inferScriptPath})
+        finally:
+            sys.argv = argv_backup
+    
+    def _flipImageHorizontally(self, imagePath, outPath):
+        """Flip an image horizontally and save it."""
+        from PIL import Image, ImageOps
+        img = Image.open(imagePath)
+        flipped = ImageOps.mirror(img)
+        flipped.save(outPath)
+        return outPath
+    
+    def _flipLandmarksHorizontally(self, coords, imageWidth):
+        """Mirror landmark x-coordinates around image center."""
+        return {lm_id: (imageWidth - x, y) for lm_id, (x, y) in coords.items()}
+    
     def onRunDetection(self):
         missing = [k for k, v in self.imageNodes.items() if v is None]
         if missing:
@@ -404,6 +479,13 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
             viewCode = self.VIEW_CODES[viewKey]
             imagePath = self.imagePaths[viewKey]
 
+            actual_input_path = imagePath
+            was_flipped = False
+            if viewKey == 'right':
+                flipped_path = os.path.join(self._inferTmpDir, f'right_flipped.jpg')
+                actual_input_path = self._flipImageHorizontally(imagePath, flipped_path)
+                was_flipped = True
+                
             # Build command
             if viewCode == 'F':
                 coarse_ckpt = self._ckptEdits['f_coarse'].text
@@ -417,7 +499,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
             cmd = [
                 python_bin, infer_script,
-                '--image', imagePath,
+                '--image', actual_input_path,
                 '--view', viewCode,
                 '--coarse', coarse_ckpt,
                 '--fine', fine_ckpt,
@@ -594,20 +676,21 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
                 self.inferenceResults[viewKey] = None
 
     def _jsonToLandmarkPositions(self, viewKey):
-        """
-        Convert parsed JSON landmarks to list of (x, y) tuples.
-        Non-present landmarks get None so we can skip them.
-        Returns dict {id: (x, y)} for present landmarks only.
-        """
         data = self.inferenceResults[viewKey]
         if data is None:
             return {}
-
+        
         result = {}
         for lm in data.get('landmarks', []):
             lm_id = lm['id']
             if lm.get('present', True) and lm.get('x') is not None and lm.get('y') is not None:
                 result[lm_id] = (float(lm['x']), float(lm['y']))
+        
+        # Flip right-profile landmarks back
+        if viewKey == 'right' and self.imageSizes.get('right'):
+            W = self.imageSizes['right'][0]
+            result = {lm_id: (W - x, y) for lm_id, (x, y) in result.items()}
+        
         return result
 
 
