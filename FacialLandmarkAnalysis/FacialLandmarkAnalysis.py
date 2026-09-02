@@ -217,6 +217,38 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
             "font-family: monospace; font-size: 11px;")
         reviewLayout.addWidget(self.landmarkListWidget)
 
+        # ── Manual Landmark Editing ──
+        editCollapsible = ctk.ctkCollapsibleButton()
+        editCollapsible.text = "ویرایش دستی لندمارک ها"
+        self.layout.addWidget(editCollapsible)
+        editLayout = qt.QVBoxLayout(editCollapsible)
+        
+        addRow = qt.QHBoxLayout()
+        self.addLandmarkBtn = qt.QPushButton("➕ افزودن لندمارک جدید")
+        self.addLandmarkBtn.setStyleSheet(
+            "background-color: #FF9800; color: white; font-weight: bold; padding: 8px;"
+        )
+        self.addLandmarkBtn.connect('clicked()', self.onStartAddLandmark)
+        addRow.addWidget(self.addLandmarkBtn)
+        editLayout.addLayout(addRow)
+        
+        deleteRow = qt.QHBoxLayout()
+        deleteRow.addWidget(qt.QLabel("حذف لندمارک شماره:"))
+        self.deleteLandmarkCombo = qt.QComboBox()
+        self.deleteLandmarkCombo.setMinimumWidth(100)
+        deleteRow.addWidget(self.deleteLandmarkCombo)
+        self.deleteLandmarkBtn = qt.QPushButton("🗑️ حذف")
+        self.deleteLandmarkBtn.setStyleSheet(
+            "background-color: #F44336; color: white; font-weight: bold; padding: 6px;"
+        )
+        self.deleteLandmarkBtn.connect('clicked()', self.onDeleteLandmark)
+        deleteRow.addWidget(self.deleteLandmarkBtn)
+        editLayout.addLayout(deleteRow)
+        
+        self.editStatusLabel = qt.QLabel("")
+        self.editStatusLabel.setStyleSheet("color: blue; font-style: italic;")
+        editLayout.addWidget(self.editStatusLabel)
+        
         # ── Scale ──
         calibCollapsible = ctk.ctkCollapsibleButton()
         calibCollapsible.text = "کالیبراسیون مقیاس (اختیاری)"
@@ -298,6 +330,82 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
     def getViewKeyFromIndex(self, index):
         return self.VIEW_KEYS[index]
     
+    def onStartAddLandmark(self):
+        """Enter interactive placement mode: user clicks on image → prompt for name."""
+        currentIdx = self.viewComboBox.currentIndex
+        viewKey = self.getViewKeyFromIndex(currentIdx)
+        
+        if self.markupNodes.get(viewKey) is None:
+            slicer.util.warningDisplay("ابتدا مدل را روی این نما اجرا کنید.")
+            return
+        
+        markupNode = self.markupNodes[viewKey]
+        selectionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
+        selectionNode.SetReferenceActivePlaceNodeClassName("vtkMRMLMarkupsFiducialNode")
+        selectionNode.SetActivePlaceNodeID(markupNode.GetID())
+        
+        interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+        interactionNode.SetCurrentInteractionMode(interactionNode.Place)
+        interactionNode.SetPlaceModePersistence(0)  # place one point only
+        
+        # Observe: when a new point is added, ask for name
+        self._pointAddedObserver = markupNode.AddObserver(
+            slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent,
+            lambda caller, event, vk=viewKey: self._onNewLandmarkPlaced(vk)
+        )
+        self.editStatusLabel.setText("👆 روی تصویر کلیک کنید تا لندمارک جدید اضافه شود")
+    
+    def _onNewLandmarkPlaced(self, viewKey):
+        markupNode = self.markupNodes[viewKey]
+        n = markupNode.GetNumberOfControlPoints()
+        newIdx = n - 1  # last added
+        
+        # Ask user for name
+        name, ok = qt.QInputDialog.getText(
+            self.parent, "نام لندمارک", "شماره یا نام لندمارک:", qt.QLineEdit.Normal, ""
+        )
+        if not ok or not name.strip():
+            markupNode.RemoveNthControlPoint(newIdx)  # cancel
+        else:
+            markupNode.SetNthControlPointLabel(newIdx, name.strip())
+            markupNode.SetNthControlPointDescription(newIdx, f"Manual_{name.strip()}")
+        
+        # Cleanup observer
+        if hasattr(self, '_pointAddedObserver'):
+            markupNode.RemoveObserver(self._pointAddedObserver)
+            del self._pointAddedObserver
+        
+        self.editStatusLabel.setText("")
+        self.updateLandmarkList(viewKey)
+        self._refreshDeleteCombo(viewKey)
+    
+    def onDeleteLandmark(self):
+        currentIdx = self.viewComboBox.currentIndex
+        viewKey = self.getViewKeyFromIndex(currentIdx)
+        markupNode = self.markupNodes.get(viewKey)
+        if markupNode is None:
+            return
+        
+        target = self.deleteLandmarkCombo.currentText
+        if not target:
+            return
+        
+        for i in range(markupNode.GetNumberOfControlPoints()):
+            if markupNode.GetNthControlPointLabel(i) == target:
+                markupNode.RemoveNthControlPoint(i)
+                break
+        
+        self.updateLandmarkList(viewKey)
+        self._refreshDeleteCombo(viewKey)
+    
+    def _refreshDeleteCombo(self, viewKey):
+        self.deleteLandmarkCombo.clear()
+        markupNode = self.markupNodes.get(viewKey)
+        if markupNode is None:
+            return
+        for i in range(markupNode.GetNumberOfControlPoints()):
+            self.deleteLandmarkCombo.addItem(markupNode.GetNthControlPointLabel(i))
+            
     # ── Load image ──  
     def onLoadImage(self, viewKey):
         from PIL import Image, ImageDraw, ImageFont
@@ -758,6 +866,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
             return
         self.showImage(viewKey)
         self.updateLandmarkList(viewKey)
+        self._refreshDeleteCombo(viewKey)
+
 
     def updateLandmarkList(self, viewKey):
         if self.markupNodes[viewKey] is None:
