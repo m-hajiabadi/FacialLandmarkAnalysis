@@ -564,6 +564,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         return {lm_id: (imageWidth - x, y) for lm_id, (x, y) in coords.items()}
     
     def onRunDetection(self):
+        import time
+        
         missing = [k for k, v in self.imageNodes.items() if v is None]
         if missing:
             slicer.util.warningDisplay(
@@ -591,6 +593,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         # Create temp dir for inference output
         self._inferTmpDir = tempfile.mkdtemp(prefix="fla_infer_")
 
+        inference_start_time = time.time()
+        
         self.progressBar.setVisible(True)
         self.progressBar.setValue(0)
         self.runDetectionBtn.enabled = False
@@ -698,14 +702,27 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.exportBothBtn.enabled = True
         self.runDetectionBtn.enabled = True
         self.progressBar.setVisible(False)
-        self.detectionStatusLabel.setText(
-            "✓ لندمارک ها شناسایی شدند. برای اصلاح، نقاط را جابجا کنید.")
         self.detectionStatusLabel.setStyleSheet("color: green; font-weight: bold;")
         self.viewComboBox.setCurrentIndex(0)
         self.showImage('frontal')
         self.updateLandmarkList('frontal')
+        elapsed = time.time() - inference_start_time
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        time_str = f"{mins} دقیقه و {secs} ثانیه" if mins > 0 else f"{secs} ثانیه"
+        time_str_fa = to_persian_digits(time_str)
+        
+        self.detectionStatusLabel.setText(
+            f"✓ لندمارک ها شناسایی شدند در {time_str_fa}. برای اصلاح، نقاط را جابجا کنید."
+        )
+        self.detectionStatusLabel.setStyleSheet("color: green; font-weight: bold;")
+        
         slicer.util.infoDisplay(
-            "تشخیص لندمارک ها کامل شد!\nبرای اصلاح، نقاط را جابجا کنید.")
+            f"تشخیص لندمارک ها کامل شد!\n\n"
+            f"⏱️ زمان اجرا: {time_str_fa}\n\n"
+            f"برای اصلاح، نقاط را جابجا کنید."
+        )
+        
 
     # def detectLandmarksForView(self, viewKey):
     #     """
