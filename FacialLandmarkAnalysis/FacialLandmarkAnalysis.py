@@ -265,33 +265,51 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.layout.addWidget(exportCollapsible)
         exportLayout = qt.QVBoxLayout(exportCollapsible)
 
-        self.exportBtn = qt.QPushButton("📊 استخراج خروجی Excel")
+        # Excel button
+        self.exportBtn = qt.QPushButton()
+        self.exportBtn.setText("  خروجی Excel")
+        self.exportBtn.setIcon(qt.QIcon.fromTheme("x-office-spreadsheet"))
+        self.exportBtn.setIconSize(qt.QSize(24, 24))
         self.exportBtn.setStyleSheet(
-            "background-color: #2196F3; color: white; font-size: 14px; "
-            "font-weight: bold; padding: 12px;"
+            "QPushButton { background-color: #1B7E3E; color: white; font-size: 13px; "
+            "font-weight: bold; padding: 10px; border-radius: 4px; text-align: left; padding-left: 20px; }"
+            "QPushButton:hover { background-color: #14652F; }"
+            "QPushButton:disabled { background-color: #9E9E9E; }"
         )
         self.exportBtn.connect('clicked()', self.onExportExcel)
         self.exportBtn.enabled = False
         exportLayout.addWidget(self.exportBtn)
-
-        self.exportPdfBtn = qt.QPushButton("📄 استخراج خروجی PDF")
+        
+        # PDF button
+        self.exportPdfBtn = qt.QPushButton()
+        self.exportPdfBtn.setText("  خروجی PDF")
+        self.exportPdfBtn.setIcon(qt.QIcon.fromTheme("application-pdf"))
+        self.exportPdfBtn.setIconSize(qt.QSize(24, 24))
         self.exportPdfBtn.setStyleSheet(
-            "background-color: #E91E63; color: white; font-size: 14px; "
-            "font-weight: bold; padding: 12px;"
+            "QPushButton { background-color: #B71C1C; color: white; font-size: 13px; "
+            "font-weight: bold; padding: 10px; border-radius: 4px; text-align: left; padding-left: 20px; }"
+            "QPushButton:hover { background-color: #8B0000; }"
+            "QPushButton:disabled { background-color: #9E9E9E; }"
         )
         self.exportPdfBtn.connect('clicked()', self.onExportPDF)
         self.exportPdfBtn.enabled = False
         exportLayout.addWidget(self.exportPdfBtn)
-
-        # Export both button - NEW
-        self.exportBothBtn = qt.QPushButton("📦 استخراج خروجی (Excel + PDF)")
+        
+        # Both button
+        self.exportBothBtn = qt.QPushButton()
+        self.exportBothBtn.setText("  خروجی کامل (Excel + PDF)")
+        self.exportBothBtn.setIcon(qt.QIcon.fromTheme("document-save-all"))
+        self.exportBothBtn.setIconSize(qt.QSize(24, 24))
         self.exportBothBtn.setStyleSheet(
-            "background-color: #9C27B0; color: white; font-size: 14px; "
-            "font-weight: bold; padding: 12px;"
+            "QPushButton { background-color: #4A148C; color: white; font-size: 13px; "
+            "font-weight: bold; padding: 10px; border-radius: 4px; text-align: left; padding-left: 20px; }"
+            "QPushButton:hover { background-color: #311B92; }"
+            "QPushButton:disabled { background-color: #9E9E9E; }"
         )
         self.exportBothBtn.connect('clicked()', self.onExportBoth)
         self.exportBothBtn.enabled = False
         exportLayout.addWidget(self.exportBothBtn)
+        
 
         self.layout.addStretch(1)
     
