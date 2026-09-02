@@ -80,45 +80,6 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         ScriptedLoadableModuleWidget.__init__(self, parent)  # type: ignore
         VTKObservationMixin.__init__(self)
         
-
-    def _browsePythonExec(self):
-        p = qt.QFileDialog.getOpenFileName(
-            self.parent, "Select Python (torch env)", "", "Executables (*)"
-        )
-        if p:
-            self.pythonEdit.setText(p)
-            qt.QSettings().setValue("FacialLandmarkAnalysis/pythonPath", p)
-
-    def _savePythonPath(self):
-        p = self.pythonEdit.text.strip()
-        if p:
-            qt.QSettings().setValue("FacialLandmarkAnalysis/pythonPath", p)
-    
-    def _defaultPythonPath(self, moduleDir):
-        """Prefer saved path, then venv next to extension, then python3."""
-        # 1) Last value saved for this module (survives Slicer restarts; update if machine changes)
-        settings = qt.QSettings()
-        saved = settings.value("FacialLandmarkAnalysis/pythonPath", "")
-        if saved and os.path.isfile(saved):
-            return saved
-
-        # 2) Portable: venv shipped/copied next to the extension package
-        #    e.g. FacialLandmarkAnalysis/venv/bin/python
-        candidates = [
-            os.path.join(moduleDir, "venv", "bin", "python"),
-            os.path.join(moduleDir, "venv", "bin", "python3"),
-            os.path.join(moduleDir, ".venv", "bin", "python"),
-            os.path.join(moduleDir, ".venv", "bin", "python3"),
-            os.path.join(os.path.dirname(moduleDir), "venv", "bin", "python"),  # parent folder
-        ]
-        for c in candidates:
-            if os.path.isfile(c) and os.access(c, os.X_OK):
-                return c
-
-        # 3) Fallback
-        import shutil
-        return shutil.which("python3") or shutil.which("python") or sys.executable
-
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)  # type: ignore
         
@@ -137,75 +98,17 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         moduleDir = os.path.dirname(os.path.abspath(__file__))
         
-        # ── Model paths ──
-        modelCollapsible = ctk.ctkCollapsibleButton()
-        modelCollapsible.text = "تنظیمات مدل"
-        modelCollapsible.collapsed = True
-        self.layout.addWidget(modelCollapsible)
-        modelLayout = qt.QFormLayout(modelCollapsible)
-
-        # infer.py path
-        self.inferScriptEdit = qt.QLineEdit()
-        defaultInfer = os.path.join(moduleDir,
-                                     'models', 'scripts', 'infer.py')
-        self.inferScriptEdit.setText(defaultInfer)
-        inferBrowseBtn = qt.QPushButton("...")
-        inferBrowseBtn.setMaximumWidth(30)
-        inferBrowseBtn.connect('clicked()', self._browseInferScript)
-        inferRow = qt.QHBoxLayout()
-        inferRow.addWidget(self.inferScriptEdit)
-        inferRow.addWidget(inferBrowseBtn)
-        modelLayout.addRow("infer.py:", inferRow)
-
-        # Python interpreter (the one that has torch etc.)
-        self.pythonEdit = qt.QLineEdit()
-        self.pythonEdit.setText(self._defaultPythonPath(moduleDir))
-        
-        pythonBrowseBtn = qt.QPushButton("...")
-        pythonBrowseBtn.setMaximumWidth(30)
-        pythonBrowseBtn.connect('clicked()', self._browsePythonExec)
-        
-        pythonRow = qt.QHBoxLayout()
-        pythonRow.addWidget(self.pythonEdit)
-        pythonRow.addWidget(pythonBrowseBtn)
-        modelLayout.addRow("Python:", pythonRow)
-
-
-        # Checkpoint paths  — 6 files total
-        # self._ckptEdits = {}
-        ckpt_labels = {
-            'f_coarse': "Frontal Coarse:",
-            'f_fine': "Frontal Fine:",
-            'l_coarse': "Lateral Coarse:",
-            'l_fine': "Lateral Fine:",
-            's_coarse': "Smile Coarse:",
-            's_fine': "Smile Fine:",
+        # ── HARDCODED MODEL PATHS (no UI) ──
+        self._inferScriptPath = os.path.join(moduleDir, 'models', 'scripts', 'infer.py')
+        self._ckptPaths = {
+            'f_coarse': os.path.join(moduleDir, 'models', 'outputs', 'f_coarse', 'checkpoints', 'best_val_mre_px.pt'),
+            'f_fine':   os.path.join(moduleDir, 'models', 'outputs', 'f_fine',   'checkpoints', 'best_val_mre_px.pt'),
+            'l_coarse': os.path.join(moduleDir, 'models', 'outputs', 'l_coarse', 'checkpoints', 'best_val_mre_px.pt'),
+            'l_fine':   os.path.join(moduleDir, 'models', 'outputs', 'l_fine',   'checkpoints', 'best_val_mre_px.pt'),
+            's_coarse': os.path.join(moduleDir, 'models', 'outputs', 's_coarse', 'checkpoints', 'best_val_mre_px.pt'),
+            's_fine':   os.path.join(moduleDir, 'models', 'outputs', 's_fine',   'checkpoints', 'best_val_s_combined.pt'),
         }
-        defaultCkptDir = os.path.join(moduleDir, 'models', 'outputs')
-        ckpt_defaults = {
-            'f_coarse': os.path.join(defaultCkptDir, 'f_coarse', 'checkpoints', 'best_val_mre_px.pt'),
-            'f_fine':   os.path.join(defaultCkptDir, 'f_fine',   'checkpoints', 'best_val_mre_px.pt'),
-            'l_coarse': os.path.join(defaultCkptDir, 'l_coarse', 'checkpoints', 'best_val_mre_px.pt'),
-            'l_fine':   os.path.join(defaultCkptDir, 'l_fine',   'checkpoints', 'best_val_mre_px.pt'),
-            's_coarse': os.path.join(defaultCkptDir, 's_coarse', 'checkpoints', 'best_val_mre_px.pt'),
-            's_fine':   os.path.join(defaultCkptDir, 's_fine',   'checkpoints', 'best_val_s_combined.pt'),
-        }
-        for key, label in ckpt_labels.items():
-            edit = qt.QLineEdit()
-            edit.setText(ckpt_defaults.get(key, ''))
-            btn = qt.QPushButton("...")
-            btn.setMaximumWidth(30)
-            btn.connect('clicked()', lambda e=edit: self._browseCkpt(e))
-            row = qt.QHBoxLayout()
-            row.addWidget(edit)
-            row.addWidget(btn)
-            modelLayout.addRow(label, row)
-            self._ckptEdits[key] = edit
-
-        # Smile presence threshold
-        self.presenceThreshEdit = qt.QLineEdit()
-        self.presenceThreshEdit.setText("0.6")
-        modelLayout.addRow("Smile presence threshold:", self.presenceThreshEdit)
+        self._presenceThresh = "0.6"
         
         # ── Patient Info ──
         patientCollapsible = ctk.ctkCollapsibleButton()
@@ -363,17 +266,6 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
                 env.pop("LD_LIBRARY_PATH", None)
         env["PYTHONNOUSERSITE"] = "1"
         return env
-
-    # ── Browse helpers ──
-    def _browseInferScript(self):
-        p = qt.QFileDialog.getOpenFileName(self.parent, "Select infer.py", "", "Python (*.py)")
-        if p:
-            self.inferScriptEdit.setText(p)
-
-    def _browseCkpt(self, edit):
-        p = qt.QFileDialog.getOpenFileName(self.parent, "Select checkpoint", "", "PyTorch (*.pt *.pth)")
-        if p:
-            edit.setText(p)
             
      # ── Landmark definitions per view ──
     def getFrontalLandmarks(self):
