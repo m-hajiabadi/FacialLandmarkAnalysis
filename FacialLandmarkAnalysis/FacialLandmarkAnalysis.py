@@ -1,3 +1,7 @@
+__author__ = "Morteza Hajiabadi"
+__copyright__ = "Copyright 2026, Morteza Hajiabadi"
+__license__ = "Proprietary / All Rights Reserved"
+
 import os
 import sys
 import json
@@ -6,39 +10,125 @@ import math
 import tempfile
 import subprocess
 import vtk, qt, ctk, slicer # type: ignore
+import platform
 import numpy as np
 from slicer.ScriptedLoadableModule import * # type: ignore
 from slicer.util import VTKObservationMixin # type: ignore
 
 # Safely install dependencies inside setup() rather than top-level import
+# def ensure_dependencies():
+#     packages = [
+#         ('openpyxl', 'openpyxl'),
+#         ('Pillow', 'PIL'),
+#         ('jdatetime', 'jdatetime'),
+#         ('reportlab', 'reportlab'),
+#         ('arabic-reshaper', 'arabic_reshaper'),
+#         ('python-bidi', 'bidi'),
+#         ('numpy', 'numpy'),
+#         ('torch', 'torch'),
+#         ('torchvision', 'torchvision'),
+#         ('opencv-python-headless', 'cv2'),
+#         ('scipy', 'scipy'),
+#         ('scikit-image', 'skimage'),
+#         ('tqdm', 'tqdm'),
+#     ]
+#     for pkg_name, module_name in packages:
+#         try:
+#             __import__(module_name)
+#         except ImportError:
+#             try:
+#                 logging.info(f"Installing missing package: {pkg_name}")
+#                 slicer.util.pip_install(pkg_name)
+#             except Exception as e:
+#                 logging.warning(f"Could not install {pkg_name}: {e}")
+            
+
+def get_venv_python_path():
+    """Return the path to the dedicated environment's Python executable."""
+    # Store venv in user home directory (e.g., ~/.slicer_fla_venv)
+    venv_dir = os.path.join(os.path.expanduser("~"), ".slicer_facial_landmark_env")
+    
+    if platform.system() == "Windows":
+        python_exe = os.path.join(venv_dir, "Scripts", "python.exe")
+    else:
+        python_exe = os.path.join(venv_dir, "bin", "python")
+        
+    return venv_dir, python_exe
+
+
+def setup_inference_environment():
+    """Creates a dedicated virtual environment for AI inference and installs CUDA PyTorch."""
+    venv_dir, python_exe = get_venv_python_path()
+    
+    # If the environment and python already exist, do nothing!
+    if os.path.isfile(python_exe):
+        return python_exe
+
+    logging.info(f"Creating dedicated virtual environment at: {venv_dir}")
+    
+    # 1. Create the virtual environment using Slicer's Python
+    try:
+        subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
+    except Exception as e:
+        logging.error(f"Failed to create venv: {e}")
+        return None
+
+    # 2. Upgrade pip inside the new venv
+    subprocess.run([python_exe, "-m", "pip", "install", "--upgrade", "pip"], check=False)
+
+    # 3. Install PyTorch with CUDA into the venv
+    cuda_index = os.environ.get("FLA_TORCH_CUDA_INDEX", "https://download.pytorch.org/whl/cu121")
+    system = platform.system()
+
+    logging.info("Installing PyTorch into dedicated environment...")
+    if system == "Darwin":
+        cmd_torch = [python_exe, "-m", "pip", "install", "torch", "torchvision"]
+    else:
+        cmd_torch = [
+            python_exe, "-m", "pip", "install", 
+            "torch", "torchvision", 
+            "--index-url", cuda_index
+        ]
+    
+    subprocess.run(cmd_torch, check=False)
+
+    # 4. Install remaining AI requirements into the venv
+    ai_packages = [
+        "opencv-python-headless",
+        "numpy",
+        "scipy",
+        "scikit-image",
+        "tqdm",
+        "Pillow"
+    ]
+    logging.info("Installing AI dependencies into dedicated environment...")
+    subprocess.run([python_exe, "-m", "pip", "install"] + ai_packages, check=False)
+    
+    logging.info("✓ Dedicated inference environment setup completed successfully.")
+    return python_exe
+
+
 def ensure_dependencies():
-    packages = [
+    """Install only UI & Report dependencies inside 3D Slicer."""
+    # Lightweight UI packages installed into Slicer directly
+    slicer_packages = [
         ('openpyxl', 'openpyxl'),
         ('Pillow', 'PIL'),
         ('jdatetime', 'jdatetime'),
         ('reportlab', 'reportlab'),
         ('arabic-reshaper', 'arabic_reshaper'),
         ('python-bidi', 'bidi'),
-        ('numpy', 'numpy'),
-        ('torch', 'torch'),
-        ('torchvision', 'torchvision'),
-        ('opencv-python-headless', 'cv2'),
-        ('scipy', 'scipy'),
-        ('scikit-image', 'skimage'),
-        ('tqdm', 'tqdm'),
     ]
-    for pkg_name, module_name in packages:
+    for pkg_name, module_name in slicer_packages:
         try:
             __import__(module_name)
         except ImportError:
             try:
-                logging.info(f"Installing missing package: {pkg_name}")
+                logging.info(f"Installing UI package into Slicer: {pkg_name}")
                 slicer.util.pip_install(pkg_name)
             except Exception as e:
                 logging.warning(f"Could not install {pkg_name}: {e}")
                 
-
-
 def to_persian_digits(text):
     """Convert English digits to Persian digits."""
     en_to_fa = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
@@ -65,7 +155,7 @@ class FacialLandmarkAnalysis(ScriptedLoadableModule): # type: ignore
         if os.path.exists(iconPath):
             self.parent.icon = qt.QIcon(iconPath)
         self.parent.helpText = "Automatic facial landmark detection with Persian Excel export."
-        self.parent.acknowledgementText = "Developed for Farinroshan."
+        self.parent.acknowledgementText = "Developed & Maintained by Morteza Hajiabadi"
 
 
 #
@@ -91,7 +181,9 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         
         ensure_dependencies()
 
-
+        # Get or create the isolated AI venv (runs once)
+        self.venvPython = setup_inference_environment()
+        
         self.logic = FacialLandmarkAnalysisLogic()
         self.imagePaths = {k: None for k in self.VIEW_KEYS}
         self.imageNodes = {k: None for k in self.VIEW_KEYS}
@@ -563,25 +655,191 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         """Mirror landmark x-coordinates around image center."""
         return {lm_id: (imageWidth - x, y) for lm_id, (x, y) in coords.items()}
     
+    # def onRunDetection(self):
+    #     import time
+        
+    #     missing = [k for k, v in self.imageNodes.items() if v is None]
+    #     if missing:
+    #         slicer.util.warningDisplay(
+    #             f"Please load all 3 images first.\nMissing: {', '.join(missing)}")
+    #         return
+        
+    #     # Validate model files exist
+    #     infer_script = self.inferScriptEdit.text
+    #     if not os.path.isfile(infer_script):
+    #         slicer.util.errorDisplay(f"infer.py not found:\n{infer_script}")
+    #         return
+
+    #     for ckpt_key, edit in self._ckptEdits.items():
+    #         if not os.path.isfile(edit.text):
+    #             slicer.util.errorDisplay(
+    #                 f"Checkpoint not found for {ckpt_key}:\n{edit.text}")
+    #             return
+
+    #     # Remove old markups
+    #     for key, node in self.markupNodes.items():
+    #         if node is not None:
+    #             slicer.mrmlScene.RemoveNode(node)
+    #             self.markupNodes[key] = None
+
+    #     # Create temp dir for inference output
+    #     self._inferTmpDir = tempfile.mkdtemp(prefix="fla_infer_")
+
+    #     inference_start_time = time.time()
+        
+    #     self.progressBar.setVisible(True)
+    #     self.progressBar.setValue(0)
+    #     self.runDetectionBtn.enabled = False
+    #     self.detectionStatusLabel.setText("⏳ در حال اجرای مدل...")
+    #     self.detectionStatusLabel.setStyleSheet("color: blue; font-weight: bold;")
+    #     slicer.app.processEvents()
+
+    #     python_bin = self.pythonEdit.text
+    #     success = True
+
+    #     for step_idx, viewKey in enumerate(self.VIEW_KEYS):
+    #         viewCode = self.VIEW_CODES[viewKey]
+    #         imagePath = self.imagePaths[viewKey]
+
+    #         actual_input_path = imagePath
+    #         was_flipped = False
+    #         if viewKey == 'right':
+    #             flipped_path = os.path.join(self._inferTmpDir, f'right_flipped.jpg')
+    #             actual_input_path = self._flipImageHorizontally(imagePath, flipped_path)
+    #             was_flipped = True
+                
+    #         # Build command
+    #         if viewCode == 'F':
+    #             coarse_ckpt = self._ckptEdits['f_coarse'].text
+    #             fine_ckpt = self._ckptEdits['f_fine'].text
+    #         elif viewCode == 'L':
+    #             coarse_ckpt = self._ckptEdits['l_coarse'].text
+    #             fine_ckpt = self._ckptEdits['l_fine'].text
+    #         else:  # S
+    #             coarse_ckpt = self._ckptEdits['s_coarse'].text
+    #             fine_ckpt = self._ckptEdits['s_fine'].text
+
+    #         cmd = [
+    #             python_bin, infer_script,
+    #             '--image', actual_input_path,
+    #             '--view', viewCode,
+    #             '--coarse', coarse_ckpt,
+    #             '--fine', fine_ckpt,
+    #             '--out_dir', self._inferTmpDir,
+    #         ]
+
+    #         # Add presence threshold for smile
+    #         if viewCode == 'S':
+    #             thresh = self.presenceThreshEdit.text.strip()
+    #             if thresh:
+    #                 cmd.extend(['--presence-threshold', thresh])
+
+    #         logging.info(f"Running inference for {viewKey}: {' '.join(cmd)}")
+    #         self.detectionStatusLabel.setText(
+    #             f"⏳ در حال پردازش {self.VIEW_LABELS_FA[viewKey]}...")
+    #         slicer.app.processEvents()
+
+    #         try:
+    #             result = subprocess.run(
+    #                 cmd,
+    #                 capture_output=True,
+    #                 text=True,
+    #                 timeout=300,
+    #                 env=self._buildInferEnv(),
+    #                 cwd=os.path.dirname(infer_script),  # often helps imports inside your repo
+    #             )
+    #             if result.returncode != 0:
+    #                 logging.error(f"Inference failed for {viewKey}:\n"
+    #                               f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+    #                 slicer.util.errorDisplay(
+    #                     f"Inference failed for {viewKey}:\n{result.stderr[:500]}")
+    #                 success = False
+    #                 break
+    #             else:
+    #                 logging.info(f"Inference OK for {viewKey}")
+    #                 if result.stdout.strip():
+    #                     logging.info(f"STDOUT: {result.stdout[:200]}")
+    #         except subprocess.TimeoutExpired:
+    #             slicer.util.errorDisplay(
+    #                 f"Inference timed out for {viewKey} (300s limit)")
+    #             success = False
+    #             break
+    #         except Exception as e:
+    #             slicer.util.errorDisplay(f"Error running inference for {viewKey}:\n{e}")
+    #             success = False
+    #             break
+
+    #         self.progressBar.setValue(step_idx + 1)
+    #         slicer.app.processEvents()
+
+    #     if not success:
+    #         self.runDetectionBtn.enabled = True
+    #         self.progressBar.setVisible(False)
+    #         self.detectionStatusLabel.setText("❌ خطا در اجرای مدل")
+    #         self.detectionStatusLabel.setStyleSheet("color: red; font-weight: bold;")
+    #         return
+
+    #     # Parse JSON results
+    #     self._parseInferenceResults()
+
+    #     # Create markups from results
+    #     for viewKey in self.VIEW_KEYS:
+    #         if self.inferenceResults[viewKey] is not None:
+    #             landmarks = self._jsonToLandmarkPositions(viewKey)
+    #             self.createMarkupNode(viewKey, landmarks)
+                
+    #     self.landmarksDetected = True
+    #     self.exportBtn.enabled = True
+    #     self.exportPdfBtn.enabled = True
+    #     self.exportBothBtn.enabled = True
+    #     self.runDetectionBtn.enabled = True
+    #     self.progressBar.setVisible(False)
+    #     self.detectionStatusLabel.setStyleSheet("color: green; font-weight: bold;")
+    #     self.viewComboBox.setCurrentIndex(0)
+    #     self.showImage('frontal')
+    #     self.updateLandmarkList('frontal')
+    #     elapsed = time.time() - inference_start_time
+    #     mins = int(elapsed // 60)
+    #     secs = int(elapsed % 60)
+    #     time_str = f"{mins} دقیقه و {secs} ثانیه" if mins > 0 else f"{secs} ثانیه"
+    #     time_str_fa = to_persian_digits(time_str)
+        
+    #     self.detectionStatusLabel.setText(
+    #         f"✓ لندمارک ها شناسایی شدند در {time_str_fa}. برای اصلاح، نقاط را جابجا کنید."
+    #     )
+    #     self.detectionStatusLabel.setStyleSheet("color: green; font-weight: bold;")
+        
+    #     slicer.util.infoDisplay(
+    #         f"تشخیص لندمارک ها کامل شد!\n\n"
+    #         f"⏱️ زمان اجرا: {time_str_fa}\n\n"
+    #         f"برای اصلاح، نقاط را جابجا کنید."
+    #     )
+        
     def onRunDetection(self):
         import time
-        
+
         missing = [k for k, v in self.imageNodes.items() if v is None]
         if missing:
             slicer.util.warningDisplay(
                 f"Please load all 3 images first.\nMissing: {', '.join(missing)}")
             return
-        
-        # Validate model files exist
-        infer_script = self.inferScriptEdit.text
+
+        # Ensure environment is ready
+        if not self.venvPython or not os.path.isfile(self.venvPython):
+            self.venvPython = setup_inference_environment()
+            if not self.venvPython:
+                slicer.util.errorDisplay("Could not initialize dedicated Python environment.")
+                return
+
+        # Validate script and checkpoint files
+        infer_script = self._inferScriptPath
         if not os.path.isfile(infer_script):
             slicer.util.errorDisplay(f"infer.py not found:\n{infer_script}")
             return
 
-        for ckpt_key, edit in self._ckptEdits.items():
-            if not os.path.isfile(edit.text):
-                slicer.util.errorDisplay(
-                    f"Checkpoint not found for {ckpt_key}:\n{edit.text}")
+        for ckpt_key, ckpt_path in self._ckptPaths.items():
+            if not os.path.isfile(ckpt_path):
+                slicer.util.errorDisplay(f"Checkpoint not found for {ckpt_key}:\n{ckpt_path}")
                 return
 
         # Remove old markups
@@ -590,11 +848,9 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
                 slicer.mrmlScene.RemoveNode(node)
                 self.markupNodes[key] = None
 
-        # Create temp dir for inference output
         self._inferTmpDir = tempfile.mkdtemp(prefix="fla_infer_")
-
         inference_start_time = time.time()
-        
+
         self.progressBar.setVisible(True)
         self.progressBar.setValue(0)
         self.runDetectionBtn.enabled = False
@@ -602,7 +858,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.detectionStatusLabel.setStyleSheet("color: blue; font-weight: bold;")
         slicer.app.processEvents()
 
-        python_bin = self.pythonEdit.text
+        # Use our dedicated virtualenv Python binary
+        python_bin = self.venvPython
         success = True
 
         for step_idx, viewKey in enumerate(self.VIEW_KEYS):
@@ -610,22 +867,16 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
             imagePath = self.imagePaths[viewKey]
 
             actual_input_path = imagePath
-            was_flipped = False
             if viewKey == 'right':
                 flipped_path = os.path.join(self._inferTmpDir, f'right_flipped.jpg')
                 actual_input_path = self._flipImageHorizontally(imagePath, flipped_path)
-                was_flipped = True
-                
-            # Build command
+
             if viewCode == 'F':
-                coarse_ckpt = self._ckptEdits['f_coarse'].text
-                fine_ckpt = self._ckptEdits['f_fine'].text
+                coarse_ckpt, fine_ckpt = self._ckptPaths['f_coarse'], self._ckptPaths['f_fine']
             elif viewCode == 'L':
-                coarse_ckpt = self._ckptEdits['l_coarse'].text
-                fine_ckpt = self._ckptEdits['l_fine'].text
-            else:  # S
-                coarse_ckpt = self._ckptEdits['s_coarse'].text
-                fine_ckpt = self._ckptEdits['s_fine'].text
+                coarse_ckpt, fine_ckpt = self._ckptPaths['l_coarse'], self._ckptPaths['l_fine']
+            else:
+                coarse_ckpt, fine_ckpt = self._ckptPaths['s_coarse'], self._ckptPaths['s_fine']
 
             cmd = [
                 python_bin, infer_script,
@@ -636,15 +887,11 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
                 '--out_dir', self._inferTmpDir,
             ]
 
-            # Add presence threshold for smile
-            if viewCode == 'S':
-                thresh = self.presenceThreshEdit.text.strip()
-                if thresh:
-                    cmd.extend(['--presence-threshold', thresh])
+            if viewCode == 'S' and self._presenceThresh.strip():
+                cmd.extend(['--presence-threshold', self._presenceThresh.strip()])
 
             logging.info(f"Running inference for {viewKey}: {' '.join(cmd)}")
-            self.detectionStatusLabel.setText(
-                f"⏳ در حال پردازش {self.VIEW_LABELS_FA[viewKey]}...")
+            self.detectionStatusLabel.setText(f"⏳ در حال پردازش {self.VIEW_LABELS_FA[viewKey]}...")
             slicer.app.processEvents()
 
             try:
@@ -654,24 +901,13 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
                     text=True,
                     timeout=300,
                     env=self._buildInferEnv(),
-                    cwd=os.path.dirname(infer_script),  # often helps imports inside your repo
+                    cwd=os.path.dirname(infer_script),
                 )
                 if result.returncode != 0:
-                    logging.error(f"Inference failed for {viewKey}:\n"
-                                  f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
-                    slicer.util.errorDisplay(
-                        f"Inference failed for {viewKey}:\n{result.stderr[:500]}")
+                    logging.error(f"Inference failed for {viewKey}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+                    slicer.util.errorDisplay(f"Inference failed for {viewKey}:\n{result.stderr[:500]}")
                     success = False
                     break
-                else:
-                    logging.info(f"Inference OK for {viewKey}")
-                    if result.stdout.strip():
-                        logging.info(f"STDOUT: {result.stdout[:200]}")
-            except subprocess.TimeoutExpired:
-                slicer.util.errorDisplay(
-                    f"Inference timed out for {viewKey} (300s limit)")
-                success = False
-                break
             except Exception as e:
                 slicer.util.errorDisplay(f"Error running inference for {viewKey}:\n{e}")
                 success = False
@@ -687,43 +923,31 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
             self.detectionStatusLabel.setStyleSheet("color: red; font-weight: bold;")
             return
 
-        # Parse JSON results
+        # Parse JSON and create markups
         self._parseInferenceResults()
-
-        # Create markups from results
         for viewKey in self.VIEW_KEYS:
             if self.inferenceResults[viewKey] is not None:
                 landmarks = self._jsonToLandmarkPositions(viewKey)
                 self.createMarkupNode(viewKey, landmarks)
-                
+
         self.landmarksDetected = True
         self.exportBtn.enabled = True
         self.exportPdfBtn.enabled = True
         self.exportBothBtn.enabled = True
         self.runDetectionBtn.enabled = True
         self.progressBar.setVisible(False)
-        self.detectionStatusLabel.setStyleSheet("color: green; font-weight: bold;")
         self.viewComboBox.setCurrentIndex(0)
         self.showImage('frontal')
         self.updateLandmarkList('frontal')
+
         elapsed = time.time() - inference_start_time
         mins = int(elapsed // 60)
         secs = int(elapsed % 60)
-        time_str = f"{mins} دقیقه و {secs} ثانیه" if mins > 0 else f"{secs} ثانیه"
-        time_str_fa = to_persian_digits(time_str)
+        time_str_fa = to_persian_digits(f"{mins} دقیقه و {secs} ثانیه" if mins > 0 else f"{secs} ثانیه")
         
-        self.detectionStatusLabel.setText(
-            f"✓ لندمارک ها شناسایی شدند در {time_str_fa}. برای اصلاح، نقاط را جابجا کنید."
-        )
+        self.detectionStatusLabel.setText(f"✓ لندمارک ها شناسایی شدند در {time_str_fa}.")
         self.detectionStatusLabel.setStyleSheet("color: green; font-weight: bold;")
         
-        slicer.util.infoDisplay(
-            f"تشخیص لندمارک ها کامل شد!\n\n"
-            f"⏱️ زمان اجرا: {time_str_fa}\n\n"
-            f"برای اصلاح، نقاط را جابجا کنید."
-        )
-        
-
     # def detectLandmarksForView(self, viewKey):
     #     """
     #     PLACEHOLDER - returns fixed positions.
@@ -2179,7 +2403,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
 
         # Footer info
         footer_text = self._rtl(
-            "این گزارش با استفاده از افزونه Facial Landmark Analysis تهیه شده است.")
+            "Generated by Facial Landmark Analysis | Engine Developed by Morteza Hajibadi")
         story.append(Paragraph(footer_text, body_style))
         story.append(PageBreak())
 
