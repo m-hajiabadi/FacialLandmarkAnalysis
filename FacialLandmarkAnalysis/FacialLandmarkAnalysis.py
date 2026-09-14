@@ -1184,6 +1184,9 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
 #
 # Logic
 #
+#
+# Logic
+#
 class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
     
     VIEW_KEYS = ['frontal', 'right', 'left', 'smile']
@@ -1222,13 +1225,23 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         return ((point[0] - line_p1[0]) * dy - (point[1] - line_p1[1]) * dx) / L
 
     # =============================================
-    # Row builder
+    # Row builder — 3 columns (index, measurement, interpretation)
     # =============================================
-    def _row(self, index, report):
-        """Build a user-facing row (4 columns only)."""
+    def _row(self, index, measurement, interpretation, is_header=False):
         return {
             'ایندکس': index,
-            'گزارش': report,
+            'اندازه گیری': measurement,
+            'تفسیر کلینیکی': interpretation,
+            '_is_header': is_header,
+        }
+
+    def _section(self, title):
+        """Section header row (rendered as merged, highlighted)."""
+        return {
+            'ایندکس': title,
+            'اندازه گیری': '',
+            'تفسیر کلینیکی': '',
+            '_is_section': True,
         }
 
     # =============================================
@@ -1236,108 +1249,263 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
     # =============================================
     def buildFrontalRows(self, F, ppm):
         rows = []
-        # ==== قرینگی افقی صورت (Slide 19) ====
-        if 1 in F and 7 in F:
-            mid = self.midpoint(F[1], F[7])
-            rows.append(self._row("قرینگی افقی صورت", ""))
 
+        # ========== قرینگی افقی صورت ==========
+        if 1 in F and 7 in F:
+            mid_x = (F[1][0] + F[7][0]) / 2
+            x_bar = abs(F[7][0] - F[1][0]) / 2 / ppm  # x̄ = |X7-X1|:2
+
+            # Header row explaining the reference formula
+            rows.append(self._row("قرینگی افقی صورت",
+                                  f"x̄ = |X7-X1|:2 = {x_bar:.2f}",
+                                  "", is_header=True))
+
+            # Malar (زدگی گونه) — L15, L16
             if 15 in F and 16 in F:
-                d15 = abs(F[15][0] - mid[0]) / ppm
-                d16 = abs(F[16][0] - mid[0]) / ppm
+                d15 = abs(F[15][0] - mid_x) / ppm
+                d16 = abs(F[16][0] - mid_x) / ppm
+                if d15 > d16:
+                    interp = "گونه راست بیرون زده تر است (پروجکشن مالار راست)/ گونه چپ فرورفته تر است (دفیشنسی مالار چپ)"
+                elif abs(d15 - d16) < 1e-6:
+                    interp = "پروجکشن قرینه گونه دو طرف"
+                else:
+                    interp = "گونه چپ بیرون زده تر است (پروجکشن مالار چپ)/ گونه راست فرورفته تر است (دفیشنسی مالار راست)"
                 rows.append(self._row("",
-                                      f"X15 = {d15:.2f} | X16 = {d16:.2f} | اختلاف = {abs(d15-d16):.2f}",))
+                                      f"|X15-X̄| = {d15:.2f} | |X16-X̄| = {d16:.2f}",
+                                      interp))
+
+            # Ala of nose — L17, L18
             if 17 in F and 18 in F:
-                d17 = abs(F[17][0] - mid[0]) / ppm
-                d18 = abs(F[18][0] - mid[0]) / ppm
+                d17 = abs(F[17][0] - mid_x) / ppm
+                d18 = abs(F[18][0] - mid_x) / ppm
+                if d17 > d18:
+                    interp = "الا بینی راست پهن تر است/ الا بینی چپ باریک تر است/ احتمال سابقه شکاف لب و کام قبلی"
+                elif abs(d17 - d18) < 1e-6:
+                    interp = "عرض قرینه الا بینی دو طرف"
+                else:
+                    interp = "الا بینی چپ پهن تر است/ الا بینی راست باریک تر است/ احتمال سابقه شکاف لب و کام قبلی"
                 rows.append(self._row("",
-                                      f"X17 = {d17:.2f} | X18 = {d18:.2f} | اختلاف = {abs(d17-d18):.2f}",))
+                                      f"|X17-X̄| = {d17:.2f} | |X18-X̄| = {d18:.2f}",
+                                      interp))
+
+            # Cheilion (گوشه لب) — L19, L20
             if 19 in F and 20 in F:
-                d19 = abs(F[19][0] - mid[0]) / ppm
-                d20 = abs(F[20][0] - mid[0]) / ppm
+                d19 = abs(F[19][0] - mid_x) / ppm
+                d20 = abs(F[20][0] - mid_x) / ppm
+                if d19 > d20:
+                    interp = "عرض دهان در سمت راست بیشتر است/ عرض دهان در سمت چپ کمتر است/ انحراف مندیبل به سمت راست/ احتمال سابقه شکاف لب و کام قبلی"
+                elif abs(d19 - d20) < 1e-6:
+                    interp = "عرض قرینه کامیشور دهان دو طرف"
+                else:
+                    interp = "عرض دهان در سمت چپ بیشتر است/ عرض دهان در سمت راست کمتر است/ انحراف مندیبل به سمت چپ/ احتمال سابقه شکاف لب و کام قبلی"
                 rows.append(self._row("",
-                                      f"X19 = {d19:.2f} | X20 = {d20:.2f} | اختلاف = {abs(d19-d20):.2f}",))
+                                      f"|X19-X̄| = {d19:.2f} | |X20-X̄| = {d20:.2f}",
+                                      interp))
+
+            # Gonial — L22, L23
             if 22 in F and 23 in F:
-                d22 = abs(F[22][0] - mid[0]) / ppm
-                d23 = abs(F[23][0] - mid[0]) / ppm
+                d22 = abs(F[22][0] - mid_x) / ppm
+                d23 = abs(F[23][0] - mid_x) / ppm
+                if d22 > d23:
+                    interp = "انگل راست بیرون زده تر است/ انگل چپ فرورفته تر است/ انحراف مندیبل به سمت راست"
+                elif abs(d22 - d23) < 1e-6:
+                    interp = "پروجکشن قرینه انگل دو طرف"
+                else:
+                    interp = "انگل چپ بیرون زده تر است/ انگل راست فرورفته تر است/ انحراف مندیبل به سمت چپ"
                 rows.append(self._row("",
-                                      f"X22 = {d22:.2f} | X23 = {d23:.2f} | اختلاف = {abs(d22-d23):.2f}",))
+                                      f"|X22-X̄| = {d22:.2f} | |X23-X̄| = {d23:.2f}",
+                                      interp))
+
+            # Menton — L24
             if 24 in F:
-                d24 = abs(F[24][0] - mid[0]) / ppm
+                d24 = F[24][0] - mid_x  # signed
+                if d24 > 1e-6:
+                    interp = "انحراف چانه یا مندیبل به سمت راست"
+                elif abs(d24) < 1e-6:
+                    interp = "چانه انحراف ندارد"
+                else:
+                    interp = "انحراف چانه یا مندیبل به سمت چپ"
                 rows.append(self._row("",
-                                      f"فاصله = {d24:.2f}",))
+                                      f"X24 - X̄ = {d24/ppm:.2f}",
+                                      interp))
 
-        # ==== قرینگی عمودی صورت (Slide 20) ====
+        # ========== قرینگی عمودی صورت ==========
         if 1 in F and 7 in F:
-            y_line = (F[1][1] + F[7][1]) / 2
-            rows.append(self._row("قرینگی عمودی صورت", ""))
+            y_bar_ref = (F[1][1] + F[7][1]) / 2
+            y_bar_val = abs(F[7][1] - F[1][1]) / 2 / ppm  # Ȳ = |Y7-Y1|:2
 
+            rows.append(self._row("قرینگی عمودی صورت",
+                                  f"Ȳ = |Y7-Y1|:2 = {y_bar_val:.2f}",
+                                  "", is_header=True))
+
+            # L15, L16 — malar height
             if 15 in F and 16 in F:
-                dy15 = abs(F[15][1] - y_line) / ppm
-                dy16 = abs(F[16][1] - y_line) / ppm
+                dy15 = abs(F[15][1] - y_bar_ref) / ppm
+                dy16 = abs(F[16][1] - y_bar_ref) / ppm
+                if dy15 < dy16:
+                    interp = "گونه سمت راست فوقانی تر از چپ است/ دفیشنسی گونه چپ/ کنت ماگزیلا در سمت راست"
+                elif abs(dy15 - dy16) < 1e-6:
+                    interp = "ارتفاع قرینه گونه دو سمت"
+                else:
+                    interp = "گونه سمت چپ فوقانی تر از راست است/ دفیشنسی گونه راست/ کنت ماگزیلا در سمت چپ"
                 rows.append(self._row("",
-                                      f"Y15 = {dy15:.2f} | Y16 = {dy16:.2f} | اختلاف = {abs(dy15-dy16):.2f}",))
+                                      f"|Y15-Ȳ| = {dy15:.2f} | |Y16-Ȳ| = {dy16:.2f}",
+                                      interp))
+
+            # L17, L18 — ala height
             if 17 in F and 18 in F:
-                dy17 = abs(F[17][1] - y_line) / ppm
-                dy18 = abs(F[18][1] - y_line) / ppm
+                dy17 = abs(F[17][1] - y_bar_ref) / ppm
+                dy18 = abs(F[18][1] - y_bar_ref) / ppm
+                if dy17 < dy18:
+                    interp = "الا بینی راست فوقانی تر از چپ است/ کنت ماگزیلا در سمت راست/ احتمال سابقه شکاف لب و کام قبلی"
+                elif abs(dy17 - dy18) < 1e-6:
+                    interp = "ارتفاع قرینه الا بینی دو سمت"
+                else:
+                    interp = "الا بینی چپ فوقانی تر از راست است/ کنت ماگزیلا در سمت چپ/ احتمال سابقه شکاف لب و کام قبلی"
                 rows.append(self._row("",
-                                      f"Y17 = {dy17:.2f} | Y18 = {dy18:.2f} | اختلاف = {abs(dy17-dy18):.2f}",))
+                                      f"|Y17-Ȳ| = {dy17:.2f} | |Y18-Ȳ| = {dy18:.2f}",
+                                      interp))
+
+            # L19, L20 — commissure height
             if 19 in F and 20 in F:
-                dy19 = abs(F[19][1] - y_line) / ppm
-                dy20 = abs(F[20][1] - y_line) / ppm
+                dy19 = abs(F[19][1] - y_bar_ref) / ppm
+                dy20 = abs(F[20][1] - y_bar_ref) / ppm
+                if dy19 < dy20:
+                    interp = "کامیشور راست فوقانی تر از چپ است/ کنت ماگزیلا در سمت راست/ احتمال سابقه شکاف لب و کام قبلی"
+                elif abs(dy19 - dy20) < 1e-6:
+                    interp = "ارتفاع قرینه کامیشور دو سمت/ فقدان کنت ماگزیلا"
+                else:
+                    interp = "کامیشور چپ فوقانی تر از راست است/ کنت ماگزیلا در سمت چپ/ احتمال سابقه شکاف لب و کام قبلی"
                 rows.append(self._row("",
-                                      f"Y19 = {dy19:.2f} | Y20 = {dy20:.2f} | اختلاف = {abs(dy19-dy20):.2f}",))
+                                      f"|Y19-Ȳ| = {dy19:.2f} | |Y20-Ȳ| = {dy20:.2f}",
+                                      interp))
+
+            # L22, L23 — gonial height
             if 22 in F and 23 in F:
-                dy22 = abs(F[22][1] - y_line) / ppm
-                dy23 = abs(F[23][1] - y_line) / ppm
+                dy22 = abs(F[22][1] - y_bar_ref) / ppm
+                dy23 = abs(F[23][1] - y_bar_ref) / ppm
+                if dy22 < dy23:
+                    interp = "انگل راست فوقانی تر از چپ است/ انحراف مندیبل به سمت راست"
+                elif abs(dy22 - dy23) < 1e-6:
+                    interp = "ارتفاع قرینه انگل دو سمت"
+                else:
+                    interp = "انگل چپ فوقانی تر از راست است/ انحراف مندیبل به سمت چپ"
                 rows.append(self._row("",
-                                      f"Y22 = {dy22:.2f} | Y23 = {dy23:.2f} | اختلاف = {abs(dy22-dy23):.2f}",))
+                                      f"|Y22-Ȳ| = {dy22:.2f} | |Y23-Ȳ| = {dy23:.2f}",
+                                      interp))
 
-        # ==== نسبت عرض گونه به عرض گونیال (Slide 21) ====
+        # ========== نسبت عرض گونه به عرض گونیال ==========
         if all(k in F for k in [15, 16, 22, 23]):
-            zy_w = abs(F[16][0] - F[15][0]) / ppm
-            go_w = abs(F[23][0] - F[22][0]) / ppm
-            ratio = go_w / zy_w if zy_w != 0 else 0
+            zy_w = abs(F[16][0] - F[15][0]) / ppm  # زایگوماتیک
+            go_w = abs(F[23][0] - F[22][0]) / ppm  # گونیال
+            ratio = (go_w / zy_w) * 100 if zy_w != 0 else 0
+            if 70 <= ratio <= 75:
+                interp = "نسبت نرمال عرض بای گونیال به عرض بای زایگوماتیک"
+            elif ratio > 75:
+                interp = "نسبت عرض بای گونیال به عرض بای زایگوماتیک بیشتر از نرمال/ فرم صورت مربعی/ دفیشنسی ماگزیلا یا میدفیس/ هایپرتروفی عضله ماستر"
+            else:
+                interp = "نسبت عرض بای گونیال به عرض بای زایگوماتیک کمتر از نرمال/ فرم صورت لانگ فیس/ دفیشنسی مندیبل"
             rows.append(self._row("نسبت عرض گونه به عرض گونیال",
-                                  f"{ratio:.3f} ({ratio*100:.1f}%)",))
+                                  f"|X23-X22|:|X16-X15| = {ratio:.1f}%",
+                                  interp))
 
-        # ==== یک پنجم های عمودی (Slide 22) ====
+        # ========== یک پنجم های عمودی ==========
         if all(k in F for k in [3, 4, 9, 10, 13, 14]):
-            s1 = abs(F[4][0] - F[13][0]) / ppm
-            s2 = abs(F[3][0] - F[4][0]) / ppm
-            s3 = abs(F[9][0] - F[3][0]) / ppm
-            s4 = abs(F[10][0] - F[9][0]) / ppm
-            s5 = abs(F[14][0] - F[10][0]) / ppm
-            rows.append(self._row("یک پنجم های عمودی",
-                                  f"X4-X13={s1:.2f} | X3-X4={s2:.2f} | X9-X3={s3:.2f} | X10-X9={s4:.2f} | X14-X10={s5:.2f}",))
+            s1 = abs(F[4][0] - F[13][0]) / ppm   # right ear→lat canthus (R)
+            s2 = abs(F[3][0] - F[4][0]) / ppm    # right eye width
+            s3 = abs(F[9][0] - F[3][0]) / ppm    # inter-canthal
+            s4 = abs(F[10][0] - F[9][0]) / ppm   # left eye width
+            s5 = abs(F[14][0] - F[10][0]) / ppm  # left canthus→ear
 
-        # ==== عرض بینی (Slide 23) ====
+            measurement = (f"|X4-X13|={s1:.2f} | |X3-X4|={s2:.2f} | "
+                           f"|X9-X3|={s3:.2f} | |X10-X9|={s4:.2f} | |X14-X10|={s5:.2f}")
+
+            tol = 0.05 * max(s1, s2, s3, s4, s5)
+            equal_all = all(abs(a - b) <= tol for a, b in
+                            [(s1, s2), (s1, s3), (s1, s4), (s1, s5)])
+            if equal_all:
+                interp = "نرمال"
+            elif s1 > max(s2, s3, s4, s5) + tol:
+                interp = "پروترورژن گوش راست"
+            elif s5 > max(s1, s2, s3, s4) + tol:
+                interp = "پروترورژن گوش چپ"
+            elif s3 > max(s1, s2, s4, s5) + tol:
+                interp = "هایپرتلوریسم"
+            elif s3 < min(s1, s2, s4, s5) - tol:
+                interp = "هایپوتلوریسم"
+            else:
+                interp = "عدم تقارن یک پنجم های عمودی"
+            rows.append(self._row("یک پنجم های عمودی", measurement, interp))
+
+        # ========== عرض بینی ==========
         if all(k in F for k in [3, 9, 17, 18]):
             nose_w = abs(F[18][0] - F[17][0]) / ppm
             ic_w = abs(F[9][0] - F[3][0]) / ppm
-            ratio = nose_w / ic_w if ic_w != 0 else 0
-            rows.append(self._row("عرض بینی", f"{ratio:.3f}",))
+            diff = nose_w - ic_w
+            tol = 0.05 * ic_w
+            if abs(diff) <= tol:
+                interp = "نرمال"
+            elif diff > tol:
+                interp = "بیس بینی پهن است/ احتمال سابقه شکاف لب و کام قبلی"
+            else:
+                interp = "بیس بینی باریک است"
+            rows.append(self._row("عرض بینی",
+                                  f"|X18-X17|={nose_w:.2f} | |X9-X3|={ic_w:.2f}",
+                                  interp))
 
-        # ==== عرض دهان (Slide 24) ====
+        # ========== عرض دهان ==========
         if all(k in F for k in [2, 8, 19, 20]):
             mouth_w = abs(F[20][0] - F[19][0]) / ppm
             iris_w = abs(F[8][0] - F[2][0]) / ppm
-            ratio = mouth_w / iris_w if iris_w != 0 else 0
-            rows.append(self._row("عرض دهان", f"{ratio:.3f}",))
+            diff = mouth_w - iris_w
+            tol = 0.05 * iris_w
+            if abs(diff) <= tol:
+                interp = "نرمال"
+            elif diff > tol:
+                interp = "عرض دهان بیشتر از نرمال است"
+            else:
+                interp = "عرض دهان کمتر از نرمال است"
+            rows.append(self._row("عرض دهان",
+                                  f"|X20-X19|={mouth_w:.2f} | |X8-X2|={iris_w:.2f}",
+                                  interp))
 
-        # ==== نمایش اسکرا (Slide 25) ====
-        if 5 in F and 6 in F:
-            ss_r = abs(F[6][1] - F[5][1]) / ppm
-            rows.append(self._row("نمایش اسکرا (چشم راست)", f"{ss_r:.2f}",))
-        if 11 in F and 12 in F:
-            ss_l = abs(F[12][1] - F[11][1]) / ppm
-            rows.append(self._row("نمایش اسکرا (چشم چپ)", f"{ss_l:.2f}",))
+        # ========== نمایش اسکرا ==========
+        if all(k in F for k in [5, 6, 11, 12]):
+            y5, y6, y11, y12 = F[5][1], F[6][1], F[11][1], F[12][1]
+            cond_right_ok = y6 <= y5
+            cond_left_ok = y12 <= y11
+            if cond_right_ok and cond_left_ok:
+                interp = "نرمال"
+            elif not cond_right_ok and cond_left_ok:
+                interp = "نمایش اسکرا در سمت راست/ اکتروپیون پلک پایین راست/ دفی شنسی ماگزیلا و میدفیس"
+            elif cond_right_ok and not cond_left_ok:
+                interp = "نمایش اسکرا در سمت چپ/ اکتروپیون پلک پایین چپ/ دفی شنسی ماگزیلا و میدفیس"
+            else:
+                interp = "نمایش اسکرا در هر دو سمت/ اکتروپیون دو طرفه/ دفی شنسی ماگزیلا و میدفیس"
+            rows.append(self._row("نمایش اسکرا",
+                                  f"Y5={y5:.1f} | Y6={y6:.1f} | Y11={y11:.1f} | Y12={y12:.1f}",
+                                  interp))
 
-        # ==== کنت (Slide 26) ====
+        # ========== کنت ==========
         if all(k in F for k in [1, 7, 19, 20]):
-            num = abs(F[1][1] - F[19][1]) / ppm
-            den = abs(F[7][1] - F[20][1]) / ppm
-            ratio = num / den if den != 0 else 0
-            rows.append(self._row("کنت", f"{ratio:.3f}",))
+            y_bar_val = abs(F[7][1] - F[1][1]) / 2 / ppm
+            y_bar_ref = (F[1][1] + F[7][1]) / 2
+            d19 = abs(F[19][1] - y_bar_ref) / ppm
+            d20 = abs(F[20][1] - y_bar_ref) / ppm
+
+            rows.append(self._row("کنت",
+                                  f"Ȳ = |Y7-Y1|:2 = {y_bar_val:.2f}",
+                                  "", is_header=True))
+
+            if abs(d19 - d20) < 1e-6:
+                interp = "ماگزیلا کنت ندارد"
+            elif d19 < d20:
+                interp = "کنت ماگزیلا در سمت راست"
+            else:
+                interp = "کنت ماگزیلا در سمت چپ"
+            rows.append(self._row("",
+                                  f"|Y19-Ȳ| = {d19:.2f} | |Y20-Ȳ| = {d20:.2f}",
+                                  interp))
 
         return rows
 
@@ -1347,115 +1515,287 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
     def buildSmileRows(self, S, ppm):
         rows = []
 
+        # ========== میدلاین دندانی ماگزیلا به صورت ==========
         if all(k in S for k in [1, 2, 6]):
-            mid = self.midpoint(S[1], S[2])
-            dev = abs(S[6][0] - mid[0]) / ppm
-            rows.append(
-                self._row("میدلاین دندانی ماگزیلا به صورت", f"{dev:.2f}",))
+            mid_face = (S[1][0] + S[2][0]) / 2  # |X2-X1|:2 reference
+            x6 = S[6][0]
+            tol = 0.5  # px tolerance
+            if abs(x6 - mid_face) <= tol:
+                interp = "میدلاین دندانی ماگزیلا نسبت به میدلاین صورت on است"
+            elif x6 > mid_face:
+                interp = "انحراف میدلاین دندانی ماگزیلا نسبت به صورت به سمت راست"
+            else:
+                interp = "انحراف میدلاین دندانی ماگزیلا نسبت به صورت به سمت چپ"
+            rows.append(self._row("میدلاین دندانی ماگزیلا به صورت",
+                                  f"X6={x6/ppm:.2f} | (X1+X2)/2={mid_face/ppm:.2f}",
+                                  interp))
 
+        # ========== میدلاین دندانی مندیبل به چانه ==========
         if all(k in S for k in [4, 7]):
-            dev = abs(S[4][0] - S[7][0]) / ppm
-            rows.append(
-                self._row("میدلاین دندانی مندیبل به چانه", f"{dev:.2f}",))
+            x4, x7 = S[4][0], S[7][0]
+            tol = 0.5
+            if abs(x4 - x7) <= tol:
+                interp = "میدلاین دندانی مندیبل نسبت به چانه on است"
+            elif x4 < x7:
+                interp = "انحراف میدلاین دندانی مندیبل نسبت به چانه به سمت راست/ انحراف چانه به سمت چپ"
+            else:
+                interp = "انحراف میدلاین دندانی مندیبل نسبت به چانه به سمت چپ/ انحراف چانه به سمت راست"
+            rows.append(self._row("میدلاین دندانی مندیبل به چانه",
+                                  f"X4={x4/ppm:.2f} | X7={x7/ppm:.2f}",
+                                  interp))
 
+        # ========== میدلاین دندانی ماگزیلا به مندیبل ==========
         if all(k in S for k in [6, 7]):
-            dev = abs(S[6][0] - S[7][0]) / ppm
-            rows.append(
-                self._row("میدلاین دندانی ماگزیلا به مندیبل", f"{dev:.2f}",))
-
-        if 3 in S and 6 in S:
-            if 8 in S:
-                val = abs(S[8][1] - S[6][1]) / ppm
-                formula = "Y8-Y6"
+            x6, x7 = S[6][0], S[7][0]
+            tol = 0.5
+            if abs(x6 - x7) <= tol:
+                interp = "میدلاین دندانی ماگزیلا و مندیبل نسبت به هم on است"
+            elif x6 < x7:
+                interp = "انحراف میدلاین دندانی ماگزیلا و مندیبل نسبت به هم (میدلاین دندانی ماگزیلا به سمت چپ/ میدلاین دندانی مندیبل به سمت راست)"
             else:
-                val = abs(S[3][1] - S[6][1]) / ppm
-                formula = "Y3-Y6"
-            rows.append(self._row("نمایش دندان", f"{val:.2f} ({formula})",))
+                interp = "انحراف میدلاین دندانی ماگزیلا و مندیبل نسبت به هم (میدلاین دندانی ماگزیلا به سمت راست/ میدلاین دندانی مندیبل به سمت چپ)"
+            rows.append(self._row("میدلاین دندانی ماگزیلا به مندیبل",
+                                  f"X6={x6/ppm:.2f} | X7={x7/ppm:.2f}",
+                                  interp))
 
-        if 3 in S:
-            if 8 in S:
-                val = abs(S[3][1] - S[8][1]) / ppm
-            else:
-                val = 0
-            rows.append(self._row("نمایش لثه", f"{val:.2f}",))
+        # ========== نمایش دندان ==========
+        if 8 in S and 6 in S:
+            val = abs(S[8][1] - S[6][1]) / ppm
+            rows.append(self._row("نمایش دندان",
+                                  f"|Y8-Y6| = {val:.2f}",
+                                  "نمایش کامل تاج دندان در لبخند (نشانه vertical maxillary excess/ طول لب کوتاه)"))
+        elif 6 in S and 3 in S:
+            val = abs(S[3][1] - S[6][1]) / ppm
+            rows.append(self._row("نمایش دندان",
+                                  f"|Y3-Y6| = {val:.2f}",
+                                  "مقادیر بیشتر نشانه نمایش بیشتر دندان در لبخند است"))
+        else:
+            rows.append(self._row("نمایش دندان",
+                                  "0",
+                                  "عدم نمایش دندان در لبخند/ دفیشنسی عمودی ماگزیلا/ دفیشنسی قدامی خلفی ماگزیلا/ طول لب بلند"))
+
+        # ========== نمایش لثه ==========
+        if 8 in S and 3 in S:
+            val = abs(S[3][1] - S[8][1]) / ppm
+            rows.append(self._row("نمایش لثه",
+                                  f"|Y3-Y8| = {val:.2f}",
+                                  "نمایش لثه در لبخند (نشانه vertical maxillary excess/ کمبود طول تاج کلینیکی/ رشد بیش از حد لثه/ طول لب کوتاه)"))
+        else:
+            rows.append(self._row("نمایش لثه",
+                                  "0",
+                                  "عدم نمایش لثه در لبخند"))
 
         return rows
 
     # =============================================
-    # PROFILE rows
+    # PROFILE rows (lateral view — right or left)
     # =============================================
-    def buildProfileRows(self, L, ppm):
-        """Build profile analysis from a single lateral view."""
+    def buildProfileRows(self, L, ppm, gender='male'):
         rows = []
 
+        # ========== یک سوم های افقی ==========
         if all(k in L for k in [1, 6, 11, 15]):
-            d1 = abs(L[15][1] - L[1][1]) / ppm
-            d2 = abs(L[1][1] - L[6][1]) / ppm
-            d3 = abs(L[6][1] - L[11][1]) / ppm
+            d_upper = abs(L[15][1] - L[1][1]) / ppm  # Y15-Y1
+            d_mid   = abs(L[1][1]  - L[6][1]) / ppm  # Y1-Y6
+            d_lower = abs(L[6][1]  - L[11][1]) / ppm # Y6-Y11
+            tol = 0.05 * max(d_upper, d_mid, d_lower)
+
+            if abs(d_upper - d_mid) <= tol and abs(d_mid - d_lower) <= tol:
+                interp = "نرمال"
+            elif d_upper > d_mid + tol and d_upper > d_lower + tol:
+                interp = "ارتفاع یک سوم فوقانی صورت بیشتر از یک سوم میانی و تحتانی (دفیشنسی عمودی ماگزیلا و مندیبل/ الگوی رشد short face/ خط رویش موی عقب رفته/ ارتفاع بلند پیشانی)"
+            elif d_mid > d_upper + tol and d_mid > d_lower + tol:
+                interp = "ارتفاع یک سوم میانی صورت بیشتر از یک سوم فوقانی و تحتانی (بلند بودن میدفیس/ بلند بودن طول بینی)"
+            elif d_lower > d_upper + tol and d_lower > d_mid + tol:
+                interp = "ارتفاع یک سوم تحتانی صورت بیشتر از یک سوم فوقانی و میانی (دفیشنسی عمودی میدفیس/ الگوی رشد عمودی long face و هایپردایورجنت)"
+            else:
+                interp = "عدم تقارن قابل توجه یک‌سوم‌های افقی"
             rows.append(self._row("یک سوم های افقی",
-                                  f"Y15-Y1={d1:.2f} | Y1-Y6={d2:.2f} | Y6-Y11={d3:.2f}",))
+                                  f"|Y15-Y1|={d_upper:.2f} | |Y1-Y6|={d_mid:.2f} | |Y6-Y11|={d_lower:.2f}",
+                                  interp))
 
+        # ========== یک سوم تحتانی (نسبت لب بالا/تحتانی) ==========
         if all(k in L for k in [6, 11, 16]):
-            num1 = abs(L[6][1] - L[16][1]) / ppm
-            den1 = abs(L[6][1] - L[11][1]) / ppm
-            ratio1 = num1 / den1 if den1 != 0 else 0
-            rows.append(self._row("یک سوم تحتانی (1 به 3)", f"{ratio1:.3f}",))
+            upper_lip = abs(L[6][1] - L[16][1]) / ppm   # |Y6-Y16|
+            lower_face = abs(L[6][1] - L[11][1]) / ppm  # |Y6-Y11|
+            lower_lip = abs(L[16][1] - L[11][1]) / ppm  # |Y16-Y11|
+            r1 = upper_lip / lower_face if lower_face else 0
+            r2 = lower_lip / lower_face if lower_face else 0
 
-            num2 = abs(L[16][1] - L[11][1]) / ppm
-            ratio2 = num2 / den1 if den1 != 0 else 0
-            rows.append(self._row("یک سوم تحتانی (2 به 3)", f"{ratio2:.3f}",))
+            # نسبت طبیعی 1:3 و 2:3
+            if abs(r1 - 1/3) < 0.05 and abs(r2 - 2/3) < 0.05:
+                interp = "نرمال"
+            elif r1 < 1/3 - 0.05:
+                interp = "طول لب بالا کوتاه نسبت به یک سوم تحتانی صورت/ ارتفاع تحتانی افزایش یافته قدام صورت/ mandibular excess"
+            elif r1 > 1/3 + 0.05:
+                interp = "طول لب بالا بلند نسبت به یک سوم تحتانی صورت/ کاهش ارتفاع یک سوم تحتانی صورت/ دفیشنسی مندیبل"
+            elif r2 < 2/3 - 0.05:
+                interp = "طول لب پایین کوتاه نسبت به یک سوم تحتانی صورت/ افزایش ارتفاع یک سوم تحتانی صورت/ چانه بلند"
+            else:
+                interp = "طول لب پایین بلند نسبت به یک سوم تحتانی صورت"
+            rows.append(self._row("یک سوم تحتانی",
+                                  f"|Y6-Y16|:|Y6-Y11|={r1:.3f} | |Y16-Y11|:|Y6-Y11|={r2:.3f}",
+                                  interp))
 
+        # ========== زاویه نازوفرونتال ==========
         if all(k in L for k in [1, 2, 3]):
             angle = self.angle3(L[1], L[2], L[3])
-            rows.append(self._row("زاویه نازوفرونتال", f"{angle:.2f} درجه",))
+            if 125 <= angle <= 135:
+                interp = "نرمال"
+            elif angle < 125:
+                interp = "برجستگی بیشتر گلابلا/ پروجکشن بیشتر بینی/ low radix"
+            else:
+                interp = "برجستگی کمتر گلابلا/ پروجکشن کمتر بینی"
+            rows.append(self._row("زاویه نازوفرونتال",
+                                  f"{angle:.2f}°",
+                                  interp))
 
+        # ========== طول بینی ==========
         if all(k in L for k in [1, 2, 3, 4]):
-            d32 = self.dist(L[3], L[2]) / ppm
-            d41 = self.dist(L[4], L[1]) / ppm
-            ratio = d32 / d41 if d41 != 0 else 0
-            rows.append(
-                self._row("طول بینی", f"{ratio:.3f} ({ratio*100:.1f}%)",))
+            nose_len = self.dist(L[3], L[2]) / ppm
+            mid_face = self.dist(L[4], L[1]) / ppm
+            ratio = (nose_len / mid_face * 100) if mid_face else 0
+            if abs(ratio - 67) <= 3:
+                interp = "نرمال"
+            elif ratio < 64:
+                interp = "طول بینی کوتاه تر نسبت به یک سوم میانی صورت"
+            else:
+                interp = "طول بینی بلند تر نسبت به یک سوم میانی صورت"
+            rows.append(self._row("طول بینی",
+                                  f"√((X3-X2)²+(Y3-Y2)²) : √((X4-X1)²+(Y4-Y1)²) = {ratio:.1f}%",
+                                  interp))
 
+        # ========== پروجکشن بینی ==========
         if all(k in L for k in [3, 4, 6]):
             num = abs(L[3][0] - L[6][0]) / ppm
             den = abs(L[6][0] - L[4][0]) / ppm
-            ratio = num / den if den != 0 else 0
-            rows.append(self._row("پروجکشن بینی", f"{ratio:.3f}",))
+            ratio = num / den if den else 0
+            if abs(ratio - 2) <= 0.15:
+                interp = "نرمال"
+            elif ratio < 2:
+                interp = "پروجکشن کم بینی/ دفیشنسی میدفیس"
+            else:
+                interp = "پروجکشن زیاد بینی"
+            rows.append(self._row("پروجکشن بینی",
+                                  f"|X3-X6|:|X6-X4| = {ratio:.3f}",
+                                  interp))
 
+        # ========== زاویه نازولیبیال ==========
         if all(k in L for k in [5, 6, 7]):
             angle = self.angle3(L[5], L[6], L[7])
-            rows.append(self._row("زاویه نازولیبیال", f"{angle:.2f} درجه",))
+            if gender == 'female':
+                lo, hi = 90, 110
+            else:
+                lo, hi = 90, 95
+            if lo <= angle <= hi:
+                interp = "نرمال"
+            elif angle > hi:
+                interp = "ساپورت کم لب بالا/ رتروژن دندان های قدامی ماگزیلا/ کاهش بعد قدامی خلفی ماگزیلا/ روتیشن نوک بینی"
+            else:
+                interp = "ساپورت زیاد لب بالا/ پروتروژن دندان های قدامی ماگزیلا/ افزایش بعد قدامی خلفی ماگزیلا/ افتادگی نوک بینی"
+            rows.append(self._row("زاویه نازولیبیال",
+                                  f"{angle:.2f}°",
+                                  interp))
 
+        # ========== پروجکشن لب بالا به لب پایین ==========
         if all(k in L for k in [7, 8]):
             diff = (L[7][0] - L[8][0]) / ppm
-            rows.append(
-                self._row("پروجکشن لب بالا به لب پایین", f"{diff:.2f}",))
+            # NOTE: sign convention depends on right vs left profile
+            if diff > 0:
+                interp = "لب بالا جلوتر از لب پایین است/ تمایل به رابطه اسکلتال کلاس یک یا دو"
+            else:
+                interp = "لب پایین جلوتر از لب بالا است/ تمایل به رابطه اسکلتال کلاس سه"
+            rows.append(self._row("پروجکشن لب بالا به لب پایین",
+                                  f"X7-X8 = {diff:.2f}",
+                                  interp))
 
+        # ========== پروجکشن لب بالا و پایین نسبت به صورت (E-line) ==========
         if all(k in L for k in [5, 7, 8, 10]):
             d7 = self.pt_line_dist(L[7], L[5], L[10]) / ppm
             d8 = self.pt_line_dist(L[8], L[5], L[10]) / ppm
-            sign7 = "مثبت (پروتروژن)" if d7 > 0 else ("منفی (رتروژن)" if d7 < 0 else "صفر")
-            sign8 = "مثبت (پروتروژن)" if d8 > 0 else ("منفی (رتروژن)" if d8 < 0 else "صفر")
-            rows.append(self._row("پروجکشن لب بالا و پایین نسبت به صورت",
-                                  f"X7={d7:.2f} ({sign7}) | X8={d8:.2f} ({sign8})",))
 
+            if d7 > 0.5:
+                interp7 = "لب بالا بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
+            elif d7 < -0.5:
+                interp7 = "لب بالا عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
+            else:
+                interp7 = "لب بالا در حد نرمال نسبت به E-line"
+
+            if d8 > 0.5:
+                interp8 = "لب پایین بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
+            elif d8 < -0.5:
+                interp8 = "لب پایین عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
+            else:
+                interp8 = "لب پایین در حد نرمال نسبت به E-line"
+
+            rows.append(self._row("پروجکشن لب بالا و پایین نسبت به صورت",
+                                  f"فاصله X7 از خط 5-10 = {d7:.2f}",
+                                  interp7))
+            rows.append(self._row("",
+                                  f"فاصله X8 از خط 5-10 = {d8:.2f}",
+                                  interp8))
+
+        # ========== زاویه منتولیبیال ==========
         if all(k in L for k in [8, 9, 10]):
             angle = self.angle3(L[8], L[9], L[10])
-            rows.append(self._row("زاویه منتولیبیال", f"{angle:.2f} درجه",))
+            if 110 <= angle <= 130:
+                interp = "نرمال"
+            elif angle < 110:
+                interp = "نازولیبیال فولد عمیق و حاده/ پروتروژن و eversion لب/ پروتروژن چانه"
+            else:
+                interp = "نازولیبیال فولد کم عمق و منفرجه/ تمایل به رابطه اسکلتال کلاس دو/ دفیشنسی چانه"
+            rows.append(self._row("زاویه منتولیبیال",
+                                  f"{angle:.2f}°",
+                                  interp))
 
+        # ========== پروجکشن چانه ==========
         if all(k in L for k in [1, 6, 10]):
             raw_angle = self.angle3(L[1], L[6], L[10])
-            angle_val = 180 - raw_angle
-            rows.append(self._row("پروجکشن چانه", f"{angle_val:.2f} درجه",))
+            angle_val = 180 - raw_angle  # 180 - (زاویه بین 1 و 6 و 10)
+            if 8 <= angle_val <= 16:
+                interp = "نرمال"
+            elif angle_val > 16:
+                interp = "دفیشنسی چانه/ تمایل به رابطه اسکلتال کلاس دو"
+            elif angle_val < 8:
+                interp = "پروتروژن چانه/ تمایل به رابطه اسکلتال کلاس سه"
+            else:
+                interp = "پروتروژن شدید چانه (منفی شود)"
+            rows.append(self._row("پروجکشن چانه",
+                                  f"180 - زاویه(1,6,10) = {angle_val:.2f}°",
+                                  interp))
 
+        # ========== زاویه چانه-گردن ==========
         if all(k in L for k in [11, 12, 13]):
             angle = self.angle3(L[11], L[12], L[13])
-            rows.append(self._row("زاویه چانه-گردن", f"{angle:.2f} درجه",))
+            if 90 <= angle <= 110:
+                interp = "نرمال/ definition خوب گردن"
+            elif angle < 90:
+                interp = "زاویه حاده گردن-چانه/ تمایل به رابطه اسکلتال کلاس سه/ شیب زیاد پلن مندیبل"
+            else:
+                interp = "زاویه منفرجه گردن-چانه/ definition ضعیف گردن/ تمایل به رابطه اسکلتال کلاس دو/ حضور چربی ساب منتال"
+            rows.append(self._row("زاویه چانه-گردن",
+                                  f"{angle:.2f}°",
+                                  interp))
 
+        # ========== زاویه پروفایل صورت ==========
         if all(k in L for k in [1, 6, 10]):
             raw_angle = self.angle3(L[1], L[6], L[10])
-            profile_angle = 180 - abs(raw_angle)
-            rows.append(self._row("زاویه پروفایل صورت", f"{profile_angle:.2f} درجه",))
+            profile_angle = 180 - raw_angle
+            # For males normal: -15° to -7°; for females: -17° to -9°
+            if gender == 'female':
+                low, high = -17, -9
+            else:
+                low, high = -15, -7
+
+            if profile_angle < low:
+                interp = "مقادیر منفی تر به معنی پروفایل صورتی محدب است/ تمایل به رابطه اسکلتال کلاس دو"
+            elif profile_angle > high:
+                interp = "مقادیر مثبت تر به معنی پروفایل صورتی مقعر است/ تمایل به رابطه اسکلتال کلاس سه"
+            else:
+                interp = "پروفایل صورتی نرمال و مستقیم است"
+            rows.append(self._row("زاویه پروفایل صورت",
+                                  f"180 - زاویه(1,6,10) = {profile_angle:.2f}°",
+                                  interp))
 
         return rows
 
@@ -1550,7 +1890,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         return True
 
     # =============================================
-    # EXCEL EXPORT
+    # EXCEL EXPORT — 3 columns
     # =============================================
     def exportToExcel(self, coords, imagePaths, ppm, filePath, patientName, doctorName, date):
         import openpyxl
@@ -1564,9 +1904,13 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         INDEX_FONT = Font(name='B Nazanin', bold=True, size=11, color="1F4E78")
         TITLE_FONT = Font(name='B Nazanin', bold=True, size=16, color="2F5496")
         SECTION_FONT = Font(name='B Nazanin', bold=True, size=13, color="C00000")
+        SUBHEADER_FONT = Font(name='B Nazanin', bold=True, size=11, color="7F6000")
+
         HEADER_FILL = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
         INDEX_FILL = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
         SECTION_FILL = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
+        SUBHEADER_FILL = PatternFill(start_color="FCE4B5", end_color="FCE4B5", fill_type="solid")
+
         CENTER = Alignment(horizontal='center', vertical='center', wrap_text=True, readingOrder=2)
         RIGHT = Alignment(horizontal='right', vertical='center', wrap_text=True, readingOrder=2)
         BORDER = Border(
@@ -1574,7 +1918,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             top=Side(style='thin', color='808080'), bottom=Side(style='thin', color='808080')
         )
 
-        COLUMNS = ['ایندکس', 'گزارش']
+        # Right-to-left column order visually (ایندکس is right-most in RTL sheet)
+        COLUMNS = ['ایندکس', 'اندازه گیری', 'تفسیر کلینیکی']
 
         def buildAnalysisSheet(sheetName, rows, viewKey):
             from openpyxl.drawing.image import Image as XLImage
@@ -1585,6 +1930,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             
             current_row = 1
             
+            # Embed annotated image at top
             if imagePaths.get(viewKey) is not None:
                 temp_dir = tempfile.mkdtemp(prefix="fla_xlsx_")
                 out_path = os.path.join(temp_dir, f"{viewKey}_annot.png")
@@ -1605,6 +1951,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                     except Exception as e:
                         logging.error(f"Image embed failed for {viewKey}: {e}")
             
+            # Header row
             for col_idx, col_name in enumerate(COLUMNS, start=1):
                 c = ws.cell(row=current_row, column=col_idx, value=col_name)
                 c.font = HEADER_FONT
@@ -1614,28 +1961,44 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             header_row = current_row
             current_row += 1
             
+            # Data rows
             for row in rows:
-                index_val = row.get('ایندکس', '')
-                is_section = index_val.startswith('═══')
+                is_section = row.get('_is_section', False)
+                is_header = row.get('_is_header', False)
+                
                 for col_idx, col_name in enumerate(COLUMNS, start=1):
                     value = row.get(col_name, "")
                     c = ws.cell(row=current_row, column=col_idx, value=value)
-                    c.alignment = RIGHT if col_idx != 1 else CENTER
+                    c.alignment = CENTER if col_idx != 3 else RIGHT
                     c.border = BORDER
+                    
                     if is_section:
                         c.font = SECTION_FONT
                         c.fill = SECTION_FILL
                         c.alignment = CENTER
+                    elif is_header:
+                        # Sub-header row: highlight the "measurement" cell (reference formula)
+                        if col_idx == 1:
+                            c.font = INDEX_FONT
+                            c.fill = INDEX_FILL
+                        elif col_idx == 2:
+                            c.font = SUBHEADER_FONT
+                            c.fill = SUBHEADER_FILL
+                            c.alignment = CENTER
+                        else:
+                            c.font = CELL_FONT
                     elif col_idx == 1 and value:
                         c.font = INDEX_FONT
                         c.fill = INDEX_FILL
                     else:
                         c.font = CELL_FONT
+                
                 if is_section:
-                    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=len(COLUMNS))
+                    ws.merge_cells(start_row=current_row, start_column=1,
+                                   end_row=current_row, end_column=len(COLUMNS))
                 current_row += 1
             
-            widths = {1: 40, 2: 50}
+            widths = {1: 32, 2: 42, 3: 60}
             for col, w in widths.items():
                 ws.column_dimensions[get_column_letter(col)].width = w
             ws.row_dimensions[header_row].height = 32
@@ -1643,10 +2006,10 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         default_sheet = wb.active
         wb.remove(default_sheet)
         
-        buildAnalysisSheet("Frontal", self.buildFrontalRows(coords['frontal'], ppm), 'frontal')
-        buildAnalysisSheet("Right Profile", self.buildProfileRows(coords.get('right', {}), ppm), 'right')
-        buildAnalysisSheet("Left Profile", self.buildProfileRows(coords.get('left', {}), ppm), 'left')
-        buildAnalysisSheet("Smile", self.buildSmileRows(coords.get('smile', {}), ppm), 'smile')
+        buildAnalysisSheet("Frontal",       self.buildFrontalRows(coords.get('frontal', {}), ppm),        'frontal')
+        buildAnalysisSheet("Right Profile", self.buildProfileRows(coords.get('right', {}),   ppm),        'right')
+        buildAnalysisSheet("Left Profile",  self.buildProfileRows(coords.get('left', {}),    ppm),        'left')
+        buildAnalysisSheet("Smile",         self.buildSmileRows(  coords.get('smile', {}),   ppm),        'smile')
         
         self._buildInformationSheet(wb, patientName, doctorName, date, coords, TITLE_FONT, CELL_FONT, RIGHT)
 
@@ -1786,8 +2149,11 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             logging.error(f"Font registration failed: {e}")
             return 'Helvetica'
 
+    # =============================================
+    # PDF EXPORT — 3 columns
+    # =============================================
     def exportToPDF(self, coords, imagePaths, ppm, filePath, patientName, doctorName, date):
-        from reportlab.lib.pagesizes import A4 # type: ignore
+        from reportlab.lib.pagesizes import A4, landscape # type: ignore
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle # type: ignore
         from reportlab.lib.units import cm # type: ignore
         from reportlab.lib import colors # type: ignore
@@ -1796,33 +2162,44 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         from PIL import Image
 
         font_name = self._registerPersianFont()
-        bold_font = font_name + '-Bold' if font_name != 'Helvetica' and os.path.exists(font_name + '-Bold') else font_name
+        bold_font = font_name
+
+        # Use landscape orientation to fit 3 columns comfortably
+        page_size = landscape(A4)
 
         doc = SimpleDocTemplate(
-            filePath, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm,
+            filePath, pagesize=page_size,
+            rightMargin=1.5*cm, leftMargin=1.5*cm,
+            topMargin=1.5*cm, bottomMargin=1.5*cm,
             title=f"Facial Analysis Report - {patientName}", author=doctorName
         )
 
         styles = getSampleStyleSheet()
 
         title_style = ParagraphStyle(
-            'CustomTitle', parent=styles['Title'], fontName=bold_font, fontSize=22, textColor=colors.HexColor('#1976D2'),
+            'CustomTitle', parent=styles['Title'], fontName=bold_font, fontSize=22,
+            textColor=colors.HexColor('#1976D2'),
             alignment=TA_CENTER, spaceAfter=20, leading=28
         )
         subtitle_style = ParagraphStyle(
-            'CustomSubtitle', parent=styles['Heading1'], fontName=bold_font, fontSize=16, textColor=colors.HexColor('#2F5496'),
+            'CustomSubtitle', parent=styles['Heading1'], fontName=bold_font, fontSize=16,
+            textColor=colors.HexColor('#2F5496'),
             alignment=TA_CENTER, spaceAfter=15, leading=22
         )
         section_style = ParagraphStyle(
-            'SectionHeading', parent=styles['Heading2'], fontName=bold_font, fontSize=14, textColor=colors.HexColor('#C00000'),
-            alignment=TA_RIGHT, spaceAfter=10, spaceBefore=15, leading=20, backColor=colors.HexColor('#FFF2CC'), borderPadding=6
+            'SectionHeading', parent=styles['Heading2'], fontName=bold_font, fontSize=14,
+            textColor=colors.HexColor('#C00000'),
+            alignment=TA_RIGHT, spaceAfter=10, spaceBefore=15, leading=20,
+            backColor=colors.HexColor('#FFF2CC'), borderPadding=6
         )
         body_style = ParagraphStyle(
-            'CustomBody', parent=styles['Normal'], fontName=font_name, fontSize=11, textColor=colors.black,
+            'CustomBody', parent=styles['Normal'], fontName=font_name, fontSize=11,
+            textColor=colors.black,
             alignment=TA_RIGHT, leading=16
         )
 
         story = []
+        # --- Cover page ---
         story.append(Spacer(1, 3*cm))
         story.append(Paragraph(self._rtl("گزارش تحلیل لندمارک های صورت"), title_style))
         story.append(Paragraph("Facial Landmark Analysis Report", subtitle_style))
@@ -1833,7 +2210,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             [self._rtl(doctorName or "-"), self._rtl(": نام پزشک")],
             [self._rtl(date or "-"), self._rtl(": تاریخ")],
         ]
-        info_table = Table(info_data, colWidths=[8*cm, 6*cm])
+        info_table = Table(info_data, colWidths=[10*cm, 6*cm])
         info_table.setStyle(TableStyle([
             ('FONT', (0, 0), (-1, -1), font_name, 12),
             ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
@@ -1846,33 +2223,36 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         ]))
         story.append(info_table)
         story.append(Spacer(1, 4*cm))
-
-        footer_text = self._rtl("Generated by Facial Landmark Analysis | Engine Developed by Morteza Hajibadi")
-        story.append(Paragraph(footer_text, body_style))
+        story.append(Paragraph(
+            self._rtl("Generated by Facial Landmark Analysis | Engine Developed by Morteza Hajiabadi"),
+            body_style
+        ))
         story.append(PageBreak())
 
+        # --- Analysis pages ---
         view_order = [
             ('frontal', "نمای روبرو (Frontal)", self.buildFrontalRows, coords.get('frontal', {})),
             ('right',   "نمای نیمرخ راست",       self.buildProfileRows, coords.get('right', {})),
             ('left',    "نمای نیمرخ چپ",         self.buildProfileRows, coords.get('left', {})),
             ('smile',   "نمای لبخند (Smile)",    self.buildSmileRows,   coords.get('smile', {})),
         ]
-        
+
         temp_dir = tempfile.mkdtemp(prefix="fla_pdf_")
-        
+
         for viewKey, view_title, rowBuilder, viewCoords in view_order:
             if imagePaths.get(viewKey) is None:
                 continue
-            
+
             story.append(Paragraph(self._rtl(view_title), section_style))
             story.append(Spacer(1, 0.3*cm))
-            
+
+            # Image (smaller since we're in landscape and need room for the wide table)
             out_path = os.path.join(temp_dir, f"{viewKey}_pdf.png")
             if self.createAnnotatedImage(viewKey, imagePaths[viewKey], viewCoords, out_path):
                 try:
                     pil_img = Image.open(out_path)
                     ow, oh = pil_img.size
-                    max_w, max_h = 14 * cm, 18 * cm
+                    max_w, max_h = 10 * cm, 12 * cm
                     aspect = ow / oh
                     if aspect > (max_w / max_h):
                         dw, dh = max_w, max_w / aspect
@@ -1881,14 +2261,14 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                     rl_img = RLImage(out_path, width=dw, height=dh)
                     rl_img.hAlign = 'CENTER'
                     story.append(rl_img)
-                    story.append(Spacer(1, 0.5*cm))
+                    story.append(Spacer(1, 0.4*cm))
                 except Exception as e:
                     logging.error(f"PDF image {viewKey} failed: {e}")
-            
+
             rows = rowBuilder(viewCoords, ppm)
             if rows:
                 self._addAnalysisTable(story, rows, font_name, bold_font)
-            
+
             story.append(PageBreak())
 
         doc.build(story, onFirstPage=self._pdfFooter, onLaterPages=self._pdfFooter)
@@ -1902,24 +2282,51 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
     def _addAnalysisTable(self, story, rows, font_name, bold_font):
         from reportlab.lib.units import cm # type: ignore
         from reportlab.lib import colors # type: ignore
-        from reportlab.platypus import (Spacer, Table, TableStyle) # type: ignore
-        
-        headers = [self._rtl("گزارش"), self._rtl("ایندکس")]
+        from reportlab.platypus import (Spacer, Table, TableStyle, Paragraph) # type: ignore
+        from reportlab.lib.styles import ParagraphStyle # type: ignore
+        from reportlab.lib.enums import TA_RIGHT, TA_CENTER # type: ignore
+
+        # Wrapping style for long clinical interpretations
+        wrap_style = ParagraphStyle(
+            'Wrap', fontName=font_name, fontSize=8,
+            alignment=TA_RIGHT, leading=11, textColor=colors.black,
+        )
+        wrap_center_style = ParagraphStyle(
+            'WrapCenter', fontName=font_name, fontSize=8,
+            alignment=TA_CENTER, leading=11, textColor=colors.black,
+        )
+
+        def P(text, center=False):
+            style = wrap_center_style if center else wrap_style
+            return Paragraph(self._rtl(text) if text else "", style)
+
+        # Column order for RTL reading (rightmost first as seen): ایندکس | اندازه گیری | تفسیر کلینیکی
+        # In reportlab, arrays are LTR, so first column is left-most on page.
+        # For an RTL page we invert: [interpretation, measurement, index]
+        headers = [P("تفسیر کلینیکی", center=True),
+                   P("اندازه گیری", center=True),
+                   P("ایندکس", center=True)]
         table_data = [headers]
         section_rows = []
+        header_rows = []
 
         for i, row in enumerate(rows):
-            index_val = row.get('ایندکس', '')
-            is_section = index_val.startswith('═══')
-
-            if is_section:
-                clean_title = index_val.replace('═══', '').strip()
-                table_data.append(['', self._rtl(clean_title)])
+            if row.get('_is_section'):
+                clean_title = row.get('ایندکس', '')
+                table_data.append(['', '', P(clean_title, center=True)])
                 section_rows.append(len(table_data) - 1)
             else:
-                table_data.append([self._rtl(row.get('گزارش', '')), self._rtl(index_val)])
+                is_header = row.get('_is_header', False)
+                table_data.append([
+                    P(row.get('تفسیر کلینیکی', '')),
+                    P(row.get('اندازه گیری', ''), center=True),
+                    P(row.get('ایندکس', ''), center=True),
+                ])
+                if is_header:
+                    header_rows.append(len(table_data) - 1)
 
-        col_widths = [11*cm, 6*cm]
+        # Column widths (landscape A4 usable width ~26cm)
+        col_widths = [12*cm, 8*cm, 6*cm]
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
         style_cmds = [
@@ -1929,8 +2336,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ]
 
         for row_idx in section_rows:
@@ -1941,8 +2348,12 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                 ('ALIGN', (0, row_idx), (-1, row_idx), 'CENTER'),
             ])
 
+        for row_idx in header_rows:
+            # Highlight the "measurement" column (index 1) as the reference formula
+            style_cmds.append(('BACKGROUND', (1, row_idx), (1, row_idx), colors.HexColor('#FCE4B5')))
+
         for i in range(1, len(table_data)):
-            if i not in section_rows and i % 2 == 0:
+            if i not in section_rows and i not in header_rows and i % 2 == 0:
                 style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#F5F5F5')))
 
         table.setStyle(TableStyle(style_cmds))
@@ -1950,20 +2361,20 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         story.append(Spacer(1, 0.5*cm))
 
     def _pdfFooter(self, canvas, doc):
-        from reportlab.lib.pagesizes import A4 # type: ignore
+        from reportlab.lib.pagesizes import A4, landscape # type: ignore
         from reportlab.lib.units import cm # type: ignore
         from reportlab.lib import colors # type: ignore
+        pw, ph = landscape(A4)
         canvas.saveState()
         canvas.setFont('Helvetica', 8)
         canvas.setFillColor(colors.grey)
         canvas.setStrokeColor(colors.HexColor('#CCCCCC'))
-        canvas.line(2*cm, 1.5*cm, A4[0] - 2*cm, 1.5*cm)
+        canvas.line(1.5*cm, 1*cm, pw - 1.5*cm, 1*cm)
         page_text = f"Page {doc.page}"
-        canvas.drawRightString(A4[0] - 2*cm, 1*cm, page_text)
-        canvas.drawString(2*cm, 1*cm, "Facial Landmark Analysis")
+        canvas.drawRightString(pw - 1.5*cm, 0.6*cm, page_text)
+        canvas.drawString(1.5*cm, 0.6*cm, "Facial Landmark Analysis")
         canvas.restoreState()
-
-
+        
 class FacialLandmarkAnalysisTest(ScriptedLoadableModuleTest): # type: ignore
     def setUp(self):
         slicer.mrmlScene.Clear()
