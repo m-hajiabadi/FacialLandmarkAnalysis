@@ -1186,7 +1186,7 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
 #
 class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
     
-    VIEW_KEYS = ['frontal', 'lateral', 'smile']
+    VIEW_KEYS = ['frontal', 'right', 'left', 'smile']
     
     def __init__(self):
         ScriptedLoadableModuleLogic.__init__(self) # type: ignore
@@ -1657,7 +1657,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         
         ws = wb.create_sheet("Information")
-        ws.sheet_view.leftToRight = True
+        ws.sheet_view.rightToLeft = True
 
         ws['A1'] = "اطلاعات گزارش"
         ws['A1'].font = title_font
@@ -1693,7 +1693,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
 
         view_names_fa = {
             'frontal': "نمای روبرو",
-            'lateral': "نمای نیمرخ",
+            'right': "نمای نیمرخ راست",
+            'left': "نمای نیمرخ چپ",
             'smile': "نمای لبخند"
         }
 
