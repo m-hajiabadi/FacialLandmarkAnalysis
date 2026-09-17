@@ -1799,6 +1799,11 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
 
         # ========== پروجکشن لب بالا و پایین نسبت به صورت (E-line) ==========
         if all(k in L for k in [5, 7, 8, 10]):
+            
+            
+            d7 = self.pt_line_dist(L[7], L[5], L[10]) / ppm
+            d8 = self.pt_line_dist(L[8], L[5], L[10]) / ppm
+
             if profile_side == 'right':
                 d7_R = self.pt_line_dist(L[7], L[5], L[10]) / ppm
                 d7_L = self.pt_line_dist(L2[7], L2[5], L2[10]) / ppm
@@ -1810,32 +1815,35 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
                 d8_L = self.pt_line_dist(L[8], L[5], L[10]) / ppm
                 d8_R = self.pt_line_dist(L2[8], L2[5], L2[10]) / ppm
                 
-
-            if d7_R > 0 and d7_L < 0:
-                interp = "لب بالا بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
-            elif d7_R < 0 and d7_L > 0:
-                interp = "لب بالا عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
-            elif d8_R > 0 and d8_L < 0:
-                interp = "لب پایین بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
-            elif d8_R < 0 and d8_L > 0:
-                interp = "لب پایین عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
+            if d7_R > 0.5 and d7_L < -0.5:
+                interp7 = "لب بالا بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
+            elif d7_R < -0.5 and d7_L > 0.5:
+                interp7 = "لب بالا عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
             else:
-                interp = "نرمال"
+                interp7 = "نرمال"
+
+            if d8_R > 0.5 and d8_L < -0.5:
+                interp8 = "لب پایین بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
+            elif d8_R < -0.5 and d8_L > 0.5:
+                interp8 = "لب پایین عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
+            else:
+                interp8 = "نرمال"
+
 
             if profile_side == "right":
-                rows.append(self._row("پروجکشن لب بالا و پایین نسبت به صورت",
+                rows.append(self._row("پروجکشن لب بالا نسبت به صورت",
                                     f"Distance of X7 from the 5-10 line = {d7_R:.2f}",
-                                    interp))
-                rows.append(self._row("",
+                                    interp7))
+                rows.append(self._row("پروجکشن لب پایین نسبت به صورت",
                                   f"Distance of X8 from the 5-10 line = {d8_R:.2f}",
-                                  "-"))
+                                  interp8))
             else:
-                rows.append(self._row("پروجکشن لب بالا و پایین نسبت به صورت",
+                rows.append(self._row("پروجکشن لب بالا نسبت به صورت",
                                     f"Distance of X7 from the 5-10 line = {d7_L:.2f}",
-                                    interp))
-                rows.append(self._row("",
+                                    interp7))
+                rows.append(self._row("پروجکشن لب پایین نسبت به صورت",
                                     f"Distance of X8 from the 5-10 line = {d8_L:.2f}",
-                                    "-"))
+                                    interp8))
 
         # ========== زاویه منتولیبیال ==========
         if all(k in L for k in [8, 9, 10]):
@@ -1853,7 +1861,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         # ========== پروجکشن چانه ==========
         if all(k in L for k in [1, 6, 10]):
             raw_angle = self.angle3(L[1], L[6], L[10])
-            angle_val = 180 - raw_angle  # 180 - (زاویه بین 1 و 6 و 10)
+            angle_val = raw_angle - 180  # (زاویه بین 1 و 6 و 10) - 180
             if 8 <= angle_val <= 16:
                 interp = "نرمال"
             elif angle_val > 16:
@@ -1863,7 +1871,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             else:
                 interp = "پروتروژن شدید چانه (منفی شود)"
             rows.append(self._row("پروجکشن چانه",
-                                  f"180 - angle(1,6,10) = {angle_val:.2f}°",
+                                  f"angle(1,6,10) - 180 = {angle_val:.2f}°",
                                   interp))
 
         # ========== زاویه چانه-گردن ==========
