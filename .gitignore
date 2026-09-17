@@ -1,3 +1,4 @@
 .DS_Store
 FacialLandmarkAnalysis/__pycache__/
 FacialLandmarkAnalysis/models
+FacialLandmarkAnalysis/.packages
