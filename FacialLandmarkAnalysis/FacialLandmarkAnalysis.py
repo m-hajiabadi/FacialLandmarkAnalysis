@@ -11,25 +11,31 @@ import logging
 import math
 import tempfile
 import subprocess
-import vtk, qt, ctk, slicer # type: ignore
+import vtk
+import qt
+import ctk
+import slicer  # type: ignore
 import platform
 import numpy as np
-from slicer.ScriptedLoadableModule import * # type: ignore
-from slicer.util import VTKObservationMixin # type: ignore
+from slicer.ScriptedLoadableModule import *  # type: ignore
+from slicer.util import VTKObservationMixin  # type: ignore
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Environment Helper Functions (.packages directory)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def get_packages_dir():
     """Return the absolute path of .packages folder next to this .py file."""
     module_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(module_dir, ".packages")
 
+
 # Single source of truth for the AI dependency set. Both the installer and the
 # manifest hash (used to decide whether a re-install is needed) read from this,
 # so bumping a version here is the only thing required to invalidate old installs.
-AI_IMPORT_NAMES = ["numpy", "torch", "cv2", "scipy", "skimage", "PIL", "pandas", "yaml", "tqdm", "matplotlib", "timm"]
+AI_IMPORT_NAMES = ["numpy", "torch", "cv2", "scipy", "skimage",
+                   "PIL", "pandas", "yaml", "tqdm", "matplotlib", "timm"]
 AI_PIP_PACKAGES = [
     "numpy<2.0.0",
     "scipy",
@@ -45,8 +51,10 @@ AI_PIP_PACKAGES = [
 
 _MANIFEST_FILENAME = ".install_manifest.json"
 
+
 def _manifest_path(packages_dir):
     return os.path.join(packages_dir, _MANIFEST_FILENAME)
+
 
 def _expected_manifest_fingerprint():
     """
@@ -63,6 +71,7 @@ def _expected_manifest_fingerprint():
     }, sort_keys=True)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
+
 def _read_manifest(packages_dir):
     path = _manifest_path(packages_dir)
     if not os.path.isfile(path):
@@ -72,6 +81,7 @@ def _read_manifest(packages_dir):
             return json.load(f)
     except Exception:
         return None
+
 
 def _write_manifest(packages_dir):
     path = _manifest_path(packages_dir)
@@ -83,6 +93,7 @@ def _write_manifest(packages_dir):
             }, f, indent=2)
     except Exception as e:
         logging.warning(f"Could not write install manifest: {e}")
+
 
 def _run_ai_import_check(packages_dir):
     """
@@ -125,6 +136,7 @@ print('ALL_OK')
         logging.warning(f"AI environment check error: {e}")
         return False
 
+
 def is_ai_environment_ready(force_full_check=False):
     """
     Cheap, fast check used on every module load / detection run.
@@ -144,7 +156,8 @@ def is_ai_environment_ready(force_full_check=False):
         return False
 
     manifest = _read_manifest(packages_dir)
-    manifest_ok = bool(manifest) and manifest.get("fingerprint") == _expected_manifest_fingerprint()
+    manifest_ok = bool(manifest) and manifest.get(
+        "fingerprint") == _expected_manifest_fingerprint()
 
     if manifest_ok and not force_full_check:
         return True
@@ -175,14 +188,16 @@ def setup_inference_environment(status_label=None):
     logging.info(f"Performing first-time AI package setup at: {packages_dir}")
     os.makedirs(packages_dir, exist_ok=True)
 
-    cuda_index = os.environ.get("FLA_TORCH_CUDA_INDEX", "https://download.pytorch.org/whl/cu121")
+    cuda_index = os.environ.get(
+        "FLA_TORCH_CUDA_INDEX", "https://download.pytorch.org/whl/cu121")
     system = platform.system()
 
     # 1. Install PyTorch. No --upgrade: on a first-time install the --target dir is
     #    empty so pip installs fresh; on a repeat call (manifest missing/stale) we
     #    still don't want pip silently jumping to a newer, unverified torch build.
     if status_label:
-        status_label.setText("⏳ در حال بررسی و دانلود PyTorch (فقط بار اول)...")
+        status_label.setText(
+            "⏳ در حال بررسی و دانلود PyTorch (فقط بار اول)...")
         slicer.app.processEvents()
 
     if system == "Darwin":
@@ -214,7 +229,8 @@ def setup_inference_environment(status_label=None):
         "--no-user", "--target", packages_dir
     ] + AI_PIP_PACKAGES
 
-    ok2 = run_pip_streaming(cmd_deps, status_label, "در حال بررسی سایر پکیج‌ها")
+    ok2 = run_pip_streaming(cmd_deps, status_label,
+                            "در حال بررسی سایر پکیج‌ها")
     if not ok2:
         logging.error("Failed to install AI dependencies.")
         return None
@@ -223,11 +239,14 @@ def setup_inference_environment(status_label=None):
     #    future run (this session and after Slicer restarts) skips straight past
     #    both pip and the subprocess import check.
     if not is_ai_environment_ready(force_full_check=True):
-        logging.error("AI packages installed but failed post-install verification.")
+        logging.error(
+            "AI packages installed but failed post-install verification.")
         return None
 
-    logging.info("✓ Isolated AI dependencies installed and verified (first-time setup complete).")
+    logging.info(
+        "✓ Isolated AI dependencies installed and verified (first-time setup complete).")
     return packages_dir
+
 
 def run_pip_streaming(cmd, status_label=None, status_prefix=""):
     """
@@ -268,7 +287,9 @@ def run_pip_streaming(cmd, status_label=None, status_prefix=""):
 # UI / Reporting Dependencies (Installed into Slicer directly)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 _DEPENDENCIES_CHECKED = False
+
 
 def ensure_dependencies():
     """
@@ -299,7 +320,8 @@ def ensure_dependencies():
                 logging.warning(f"Could not install {pkg_name}: {e}")
 
     _DEPENDENCIES_CHECKED = True
-         
+
+
 def to_persian_digits(text):
     """Convert English digits to Persian digits."""
     en_to_fa = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
@@ -309,15 +331,17 @@ def to_persian_digits(text):
 # Module
 #
 
-class FacialLandmarkAnalysis(ScriptedLoadableModule): # type: ignore
+
+class FacialLandmarkAnalysis(ScriptedLoadableModule):  # type: ignore
     def __init__(self, parent):
-        ScriptedLoadableModule.__init__(self, parent) # type: ignore
+        ScriptedLoadableModule.__init__(self, parent)  # type: ignore
         self.parent.title = "Facial Landmark Analysis"
         self.parent.categories = ["Orthodontics"]
         self.parent.dependencies = []
         self.parent.contributors = ["Morteza Hajiabadi"]
         moduleDir = os.path.dirname(os.path.abspath(__file__))
-        iconPath = os.path.join(moduleDir, 'Resources', 'Icons', 'FacialLandmarkAnalysis.png')
+        iconPath = os.path.join(moduleDir, 'Resources',
+                                'Icons', 'FacialLandmarkAnalysis.png')
         if os.path.exists(iconPath):
             self.parent.icon = qt.QIcon(iconPath)
         self.parent.helpText = "Automatic facial landmark detection with Persian Excel export."
@@ -327,7 +351,9 @@ class FacialLandmarkAnalysis(ScriptedLoadableModule): # type: ignore
 # Widget
 #
 
-class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationMixin): # type: ignore
+
+# type: ignore
+class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     VIEW_KEYS = ['frontal', 'right', 'left', 'smile']
     VIEW_CODES = {'frontal': 'F', 'right': 'L', 'left': 'L', 'smile': 'S'}
     VIEW_LABELS_FA = {
@@ -336,14 +362,14 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         'left':    'نمای نیمرخ چپ (Left Profile)',
         'smile':   'نمای لبخند (Smile)',
     }
-    
+
     def __init__(self, parent=None):
         ScriptedLoadableModuleWidget.__init__(self, parent)  # type: ignore
         VTKObservationMixin.__init__(self)
-        
+
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)  # type: ignore
-        
+
         ensure_dependencies()
 
         self.logic = FacialLandmarkAnalysisLogic()
@@ -353,13 +379,14 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.markupNodes = {k: None for k in self.VIEW_KEYS}
         self.inferenceResults = {k: None for k in self.VIEW_KEYS}
         self.landmarksDetected = False
-        
+
         self._ckptEdits = {}
 
         moduleDir = os.path.dirname(os.path.abspath(__file__))
-        
+
         # ── HARDCODED MODEL PATHS (no UI) ──
-        self._inferScriptPath = os.path.join(moduleDir, 'models', 'scripts', 'infer.py')
+        self._inferScriptPath = os.path.join(
+            moduleDir, 'models', 'scripts', 'infer.py')
         self._ckptPaths = {
             'f_coarse': os.path.join(moduleDir, 'models', 'outputs', 'f_coarse', 'checkpoints', 'best_val_mre_px.pt'),
             'f_fine':   os.path.join(moduleDir, 'models', 'outputs', 'f_fine',   'checkpoints', 'best_val_mre_px.pt'),
@@ -369,7 +396,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
             's_fine':   os.path.join(moduleDir, 'models', 'outputs', 's_fine',   'checkpoints', 'best_val_s_combined.pt'),
         }
         self._presenceThresh = "0.6"
-        
+
         # ── Patient Info ──
         patientCollapsible = ctk.ctkCollapsibleButton()
         patientCollapsible.text = "اطلاعات بیمار"
@@ -381,8 +408,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.doctorNameEdit.setText("دکتر سید علیرضا پرهیز")
         patientLayout.addRow(":نام پزشک", self.doctorNameEdit)
 
-        import jdatetime # type: ignore
-        
+        import jdatetime  # type: ignore
+
         self.dateEdit = qt.QLineEdit()
         today_str = jdatetime.date.today().strftime("%Y/%m/%d")
         persian_date = to_persian_digits(today_str)
@@ -426,8 +453,10 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.runDetectionBtn.connect('clicked()', self.onRunDetection)
         detectionLayout.addWidget(self.runDetectionBtn)
 
-        self.detectionStatusLabel = qt.QLabel("در انتظار بارگذاری تصاویر و اجرای مدل")
-        self.detectionStatusLabel.setStyleSheet("color: orange; font-style: italic;")
+        self.detectionStatusLabel = qt.QLabel(
+            "در انتظار بارگذاری تصاویر و اجرای مدل")
+        self.detectionStatusLabel.setStyleSheet(
+            "color: orange; font-style: italic;")
         self.detectionStatusLabel.setWordWrap(True)
         detectionLayout.addWidget(self.detectionStatusLabel)
 
@@ -467,7 +496,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         editCollapsible.text = "ویرایش دستی لندمارک ها"
         self.layout.addWidget(editCollapsible)
         editLayout = qt.QVBoxLayout(editCollapsible)
-        
+
         addRow = qt.QHBoxLayout()
         self.addLandmarkBtn = qt.QPushButton("➕ افزودن لندمارک جدید")
         self.addLandmarkBtn.setStyleSheet(
@@ -476,7 +505,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.addLandmarkBtn.connect('clicked()', self.onStartAddLandmark)
         addRow.addWidget(self.addLandmarkBtn)
         editLayout.addLayout(addRow)
-        
+
         deleteRow = qt.QHBoxLayout()
         deleteRow.addWidget(qt.QLabel("حذف لندمارک شماره:"))
         self.deleteLandmarkCombo = qt.QComboBox()
@@ -489,11 +518,11 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.deleteLandmarkBtn.connect('clicked()', self.onDeleteLandmark)
         deleteRow.addWidget(self.deleteLandmarkBtn)
         editLayout.addLayout(deleteRow)
-        
+
         self.editStatusLabel = qt.QLabel("")
         self.editStatusLabel.setStyleSheet("color: blue; font-style: italic;")
         editLayout.addWidget(self.editStatusLabel)
-        
+
         # ── Scale ──
         calibCollapsible = ctk.ctkCollapsibleButton()
         calibCollapsible.text = "کالیبراسیون مقیاس (اختیاری)"
@@ -524,7 +553,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.exportBtn.connect('clicked()', self.onExportExcel)
         self.exportBtn.enabled = False
         exportLayout.addWidget(self.exportBtn)
-        
+
         # PDF button
         self.exportPdfBtn = qt.QPushButton()
         self.exportPdfBtn.setText("  خروجی PDF")
@@ -539,7 +568,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.exportPdfBtn.connect('clicked()', self.onExportPDF)
         self.exportPdfBtn.enabled = False
         exportLayout.addWidget(self.exportPdfBtn)
-        
+
         # Both button
         self.exportBothBtn = qt.QPushButton()
         self.exportBothBtn.setText("  خروجی کامل (Excel + PDF)")
@@ -554,7 +583,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.exportBothBtn.connect('clicked()', self.onExportBoth)
         self.exportBothBtn.enabled = False
         exportLayout.addWidget(self.exportBothBtn)
-        
+
         self.layout.addStretch(1)
 
     def _buildInferEnv(self):
@@ -573,7 +602,7 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
                 env["PATH"] = torch_lib + os.pathsep + env.get("PATH", "")
 
         return env
-            
+
     # ── Landmark definitions per view ──
     def getFrontalLandmarks(self):
         return [(i, f"L{i}") for i in range(1, 26)]
@@ -594,93 +623,99 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     def getViewKeyFromIndex(self, index):
         return self.VIEW_KEYS[index]
-    
+
     def onStartAddLandmark(self):
         """Enter interactive placement mode: user clicks on image → prompt for name."""
         currentIdx = self.viewComboBox.currentIndex
         viewKey = self.getViewKeyFromIndex(currentIdx)
-        
+
         if self.markupNodes.get(viewKey) is None:
             slicer.util.warningDisplay("ابتدا مدل را روی این نما اجرا کنید.")
             return
-        
+
         markupNode = self.markupNodes[viewKey]
-        selectionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
-        selectionNode.SetReferenceActivePlaceNodeClassName("vtkMRMLMarkupsFiducialNode")
+        selectionNode = slicer.mrmlScene.GetNodeByID(
+            "vtkMRMLSelectionNodeSingleton")
+        selectionNode.SetReferenceActivePlaceNodeClassName(
+            "vtkMRMLMarkupsFiducialNode")
         selectionNode.SetActivePlaceNodeID(markupNode.GetID())
-        
-        interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+
+        interactionNode = slicer.mrmlScene.GetNodeByID(
+            "vtkMRMLInteractionNodeSingleton")
         interactionNode.SetCurrentInteractionMode(interactionNode.Place)
         interactionNode.SetPlaceModePersistence(0)  # place one point only
-        
+
         self._pointAddedObserver = markupNode.AddObserver(
             slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent,
             lambda caller, event, vk=viewKey: self._onNewLandmarkPlaced(vk)
         )
-        self.editStatusLabel.setText("👆 روی تصویر کلیک کنید تا لندمارک جدید اضافه شود")
-    
+        self.editStatusLabel.setText(
+            "👆 روی تصویر کلیک کنید تا لندمارک جدید اضافه شود")
+
     def _onNewLandmarkPlaced(self, viewKey):
         markupNode = self.markupNodes[viewKey]
         n = markupNode.GetNumberOfControlPoints()
         newIdx = n - 1  # last added
-        
+
         # Safe, object-oriented dialog creation for Slicer PythonQt
         dialog = qt.QInputDialog(self.parent)
         dialog.setWindowTitle("نام لندمارک")
         dialog.setLabelText("شماره یا نام لندمارک:")
         dialog.setTextValue("")
-        
+
         # Show dialog and check if the user clicked "OK"
         if dialog.exec_() == qt.QDialog.Accepted:
             name = dialog.textValue().strip()
             if name:
                 markupNode.SetNthControlPointLabel(newIdx, name)
-                markupNode.SetNthControlPointDescription(newIdx, f"Manual_{name}")
+                markupNode.SetNthControlPointDescription(
+                    newIdx, f"Manual_{name}")
             else:
                 markupNode.RemoveNthControlPoint(newIdx)
         else:
             # User cancelled, remove the placed point
             markupNode.RemoveNthControlPoint(newIdx)
-        
+
         if hasattr(self, '_pointAddedObserver'):
             markupNode.RemoveObserver(self._pointAddedObserver)
             del self._pointAddedObserver
-        
+
         self.editStatusLabel.setText("")
         self.updateLandmarkList(viewKey)
         self._refreshDeleteCombo(viewKey)
-    
+
     def onDeleteLandmark(self):
         currentIdx = self.viewComboBox.currentIndex
         viewKey = self.getViewKeyFromIndex(currentIdx)
         markupNode = self.markupNodes.get(viewKey)
         if markupNode is None:
             return
-        
+
         target = self.deleteLandmarkCombo.currentText
         if not target:
             return
-        
+
         for i in range(markupNode.GetNumberOfControlPoints()):
             if markupNode.GetNthControlPointLabel(i) == target:
                 markupNode.RemoveNthControlPoint(i)
                 break
-        
+
         self.updateLandmarkList(viewKey)
         self._refreshDeleteCombo(viewKey)
-    
+
     def _refreshDeleteCombo(self, viewKey):
         self.deleteLandmarkCombo.clear()
         markupNode = self.markupNodes.get(viewKey)
         if markupNode is None:
             return
         for i in range(markupNode.GetNumberOfControlPoints()):
-            self.deleteLandmarkCombo.addItem(markupNode.GetNthControlPointLabel(i))
-            
-    # ── Load image ──  
+            self.deleteLandmarkCombo.addItem(
+                markupNode.GetNthControlPointLabel(i))
+
+    # ── Load image ──
     def onLoadImage(self, viewKey):
         from PIL import Image
-        
+
         filePath = qt.QFileDialog.getOpenFileName(
             self.parent,
             f"Select {viewKey.replace('_', ' ').title()} Image",
@@ -715,7 +750,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         self.imageNodes[viewKey] = volumeNode
         self._loadLabels[viewKey].setText(f"✓ {os.path.basename(filePath)}")
-        self._loadLabels[viewKey].setStyleSheet("color: green; font-weight: bold;")
+        self._loadLabels[viewKey].setStyleSheet(
+            "color: green; font-weight: bold;")
         self.showImage(viewKey)
 
     def showImage(self, viewKey):
@@ -754,11 +790,11 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         flipped = ImageOps.mirror(img)
         flipped.save(outPath)
         return outPath
-    
+
     def _flipLandmarksHorizontally(self, coords, imageWidth):
         """Mirror landmark x-coordinates around image center."""
         return {lm_id: (imageWidth - x, y) for lm_id, (x, y) in coords.items()}
-    
+
     def onRunDetection(self):
         import time
 
@@ -770,15 +806,20 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         # ── Ensure isolated AI packages are installed ──
         if not is_ai_environment_ready():
-            self.detectionStatusLabel.setText("⏳ در حال دانلود و نصب مدل‌ها و پکیج‌های هوش مصنوعی (فقط بار اول)...")
-            self.detectionStatusLabel.setStyleSheet("color: blue; font-weight: bold;")
+            self.detectionStatusLabel.setText(
+                "⏳ در حال دانلود و نصب مدل‌ها و پکیج‌های هوش مصنوعی (فقط بار اول)...")
+            self.detectionStatusLabel.setStyleSheet(
+                "color: blue; font-weight: bold;")
             slicer.app.processEvents()
 
             res = setup_inference_environment(self.detectionStatusLabel)
             if not res or not is_ai_environment_ready():
-                self.detectionStatusLabel.setText("❌ خطا در راه‌اندازی وابستگی‌های هوش مصنوعی")
-                self.detectionStatusLabel.setStyleSheet("color: red; font-weight: bold;")
-                slicer.util.errorDisplay("Could not setup AI packages. Please check the Python console for details.")
+                self.detectionStatusLabel.setText(
+                    "❌ خطا در راه‌اندازی وابستگی‌های هوش مصنوعی")
+                self.detectionStatusLabel.setStyleSheet(
+                    "color: red; font-weight: bold;")
+                slicer.util.errorDisplay(
+                    "Could not setup AI packages. Please check the Python console for details.")
                 return
 
         # Validate infer.py and checkpoints
@@ -789,7 +830,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         for ckpt_key, ckpt_path in self._ckptPaths.items():
             if not os.path.isfile(ckpt_path):
-                slicer.util.errorDisplay(f"Checkpoint not found for {ckpt_key}:\n{ckpt_path}")
+                slicer.util.errorDisplay(
+                    f"Checkpoint not found for {ckpt_key}:\n{ckpt_path}")
                 return
 
         # Remove old markups
@@ -805,16 +847,19 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.progressBar.setValue(0)
         self.runDetectionBtn.enabled = False
         self.detectionStatusLabel.setText("⏳ در حال اجرای مدل...")
-        self.detectionStatusLabel.setStyleSheet("color: blue; font-weight: bold;")
+        self.detectionStatusLabel.setStyleSheet(
+            "color: blue; font-weight: bold;")
         slicer.app.processEvents()
 
         python_bin = sys.executable
         success = True
-        
+
         packages_dir = get_packages_dir()
         packages_dir_clean = packages_dir.replace('\\', '/')
-        models_dir_clean = os.path.dirname(os.path.dirname(infer_script)).replace('\\', '/')
-        models_scripts_dir_clean = os.path.dirname(infer_script).replace('\\', '/')
+        models_dir_clean = os.path.dirname(
+            os.path.dirname(infer_script)).replace('\\', '/')
+        models_scripts_dir_clean = os.path.dirname(
+            infer_script).replace('\\', '/')
         infer_script_clean = infer_script.replace('\\', '/')
 
         for step_idx, viewKey in enumerate(self.VIEW_KEYS):
@@ -823,8 +868,10 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
             actual_input_path = imagePath
             if viewKey == 'right':
-                flipped_path = os.path.join(self._inferTmpDir, f'right_flipped.jpg')
-                actual_input_path = self._flipImageHorizontally(imagePath, flipped_path)
+                flipped_path = os.path.join(
+                    self._inferTmpDir, f'right_flipped.jpg')
+                actual_input_path = self._flipImageHorizontally(
+                    imagePath, flipped_path)
 
             if viewCode == 'F':
                 coarse_ckpt, fine_ckpt = self._ckptPaths['f_coarse'], self._ckptPaths['f_fine']
@@ -844,7 +891,8 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
             ]
 
             if viewCode == 'S' and self._presenceThresh.strip():
-                args_list.extend(['--presence-threshold', self._presenceThresh.strip()])
+                args_list.extend(
+                    ['--presence-threshold', self._presenceThresh.strip()])
 
             # 2. Inject isolated packages & models paths before running infer.py
             bootstrap_code = f"""import sys, os, runpy
@@ -862,7 +910,8 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
 
             cmd = [python_bin, "-c", bootstrap_code]
             logging.info(f"Running inference for {viewKey}")
-            self.detectionStatusLabel.setText(f"⏳ در حال پردازش {self.VIEW_LABELS_FA[viewKey]}...")
+            self.detectionStatusLabel.setText(
+                f"⏳ در حال پردازش {self.VIEW_LABELS_FA[viewKey]}...")
             slicer.app.processEvents()
 
             try:
@@ -875,25 +924,29 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
                     cwd=os.path.dirname(infer_script),
                 )
                 if result.returncode != 0:
-                    logging.error(f"Inference failed for {viewKey}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
-                    slicer.util.errorDisplay(f"Inference failed for {viewKey}:\n{result.stderr[:500]}")
+                    logging.error(
+                        f"Inference failed for {viewKey}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+                    slicer.util.errorDisplay(
+                        f"Inference failed for {viewKey}:\n{result.stderr[:500]}")
                     success = False
                     break
                 else:
                     logging.info(f"Inference OK for {viewKey}")
             except Exception as e:
-                slicer.util.errorDisplay(f"Error running inference for {viewKey}:\n{e}")
+                slicer.util.errorDisplay(
+                    f"Error running inference for {viewKey}:\n{e}")
                 success = False
                 break
 
             self.progressBar.setValue(step_idx + 1)
             slicer.app.processEvents()
-            
+
         if not success:
             self.runDetectionBtn.enabled = True
             self.progressBar.setVisible(False)
             self.detectionStatusLabel.setText("❌ خطا در اجرای مدل")
-            self.detectionStatusLabel.setStyleSheet("color: red; font-weight: bold;")
+            self.detectionStatusLabel.setStyleSheet(
+                "color: red; font-weight: bold;")
             return
 
         # Parse JSON and create markups
@@ -916,10 +969,13 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
         elapsed = time.time() - inference_start_time
         mins = int(elapsed // 60)
         secs = int(elapsed % 60)
-        time_str_fa = to_persian_digits(f"{mins} دقیقه و {secs} ثانیه" if mins > 0 else f"{secs} ثانیه")
+        time_str_fa = to_persian_digits(
+            f"{mins} دقیقه و {secs} ثانیه" if mins > 0 else f"{secs} ثانیه")
 
-        self.detectionStatusLabel.setText(f"✓ لندمارک ها شناسایی شدند در {time_str_fa}.")
-        self.detectionStatusLabel.setStyleSheet("color: green; font-weight: bold;")
+        self.detectionStatusLabel.setText(
+            f"✓ لندمارک ها شناسایی شدند در {time_str_fa}.")
+        self.detectionStatusLabel.setStyleSheet(
+            "color: green; font-weight: bold;")
 
     def _parseInferenceResults(self):
         """Find and parse JSON files produced by infer.py."""
@@ -941,29 +997,31 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
                     with open(found, 'r') as f:
                         data = json.load(f)
                     self.inferenceResults[viewKey] = data
-                    logging.info(f"Parsed {found}: {len(data.get('landmarks', []))} landmarks")
+                    logging.info(
+                        f"Parsed {found}: {len(data.get('landmarks', []))} landmarks")
                 except Exception as e:
                     logging.error(f"Failed to parse {found}: {e}")
                     self.inferenceResults[viewKey] = None
             else:
-                logging.warning(f"No JSON found for {viewKey} (looking for *{suffix})")
+                logging.warning(
+                    f"No JSON found for {viewKey} (looking for *{suffix})")
                 self.inferenceResults[viewKey] = None
 
     def _jsonToLandmarkPositions(self, viewKey):
         data = self.inferenceResults[viewKey]
         if data is None:
             return {}
-        
+
         result = {}
         for lm in data.get('landmarks', []):
             lm_id = lm['id']
             if lm.get('present', True) and lm.get('x') is not None and lm.get('y') is not None:
                 result[lm_id] = (float(lm['x']), float(lm['y']))
-        
+
         if viewKey == 'right' and self.imageSizes.get('right'):
             W = self.imageSizes['right'][0]
             result = {lm_id: (W - x, y) for lm_id, (x, y) in result.items()}
-        
+
         return result
 
     def createMarkupNode(self, viewKey, landmarkDict):
@@ -1060,7 +1118,7 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
             except (ValueError, IndexError):
                 pass
         return coords
-    
+
     # ── Export handlers ──
     def onExportExcel(self):
         if not self.landmarksDetected:
@@ -1187,12 +1245,14 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
 #
 # Logic
 #
-class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
-    
+
+
+class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
+
     VIEW_KEYS = ['frontal', 'right', 'left', 'smile']
-    
+
     def __init__(self):
-        ScriptedLoadableModuleLogic.__init__(self) # type: ignore
+        ScriptedLoadableModuleLogic.__init__(self)  # type: ignore
 
     # ===== Math =====
     @staticmethod
@@ -1223,6 +1283,11 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         if L == 0:
             return 0
         return ((point[0] - line_p1[0]) * dy - (point[1] - line_p1[1]) * dx) / L
+
+    @staticmethod
+    def _has_persian_digits(text):
+        """Return True if text contains any Persian digits (۰-۹)."""
+        return any(c in '۰۱۲۳۴۵۶۷۸۹' for c in str(text))
 
     # =============================================
     # Row builder — 3 columns (index, measurement, interpretation)
@@ -1596,8 +1661,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         # ========== یک سوم های افقی ==========
         if all(k in L for k in [1, 6, 11, 15]):
             d_upper = abs(L[15][1] - L[1][1]) / ppm  # Y15-Y1
-            d_mid   = abs(L[1][1]  - L[6][1]) / ppm  # Y1-Y6
-            d_lower = abs(L[6][1]  - L[11][1]) / ppm # Y6-Y11
+            d_mid = abs(L[1][1] - L[6][1]) / ppm  # Y1-Y6
+            d_lower = abs(L[6][1] - L[11][1]) / ppm  # Y6-Y11
             tol = 0.05 * max(d_upper, d_mid, d_lower)
 
             if abs(d_upper - d_mid) <= tol and abs(d_mid - d_lower) <= tol:
@@ -1804,7 +1869,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
     # =============================================
     def createAnnotatedImage(self, viewKey, imagePath, coords, outPath):
         from PIL import Image, ImageDraw, ImageFont
-        
+
         try:
             img = Image.open(imagePath).convert('RGB')
         except Exception as e:
@@ -1819,7 +1884,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
             try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 20)
+                font = ImageFont.truetype(
+                    "/System/Library/Fonts/Helvetica.ttc", 20)
             except:
                 font = ImageFont.load_default()
 
@@ -1860,7 +1926,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                     p1 = (mx + nx * extent, my + ny * extent)
                     p2 = (mx - nx * extent, my - ny * extent)
                     draw_segment(p1, p2, MIDLINE_COLOR, 3)
-                    
+
         elif viewKey in ['right', 'left', 'lateral']:
             if 5 in coords and 10 in coords:
                 draw_segment(coords[5], coords[10], LINE_COLOR, 2)
@@ -1882,9 +1948,12 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
 
         r = max(4, int(W / 200))
         for num, (x, y) in coords.items():
-            draw.line([(x - r*2, y), (x + r*2, y)], fill=LANDMARK_COLOR, width=2)
-            draw.line([(x, y - r*2), (x, y + r*2)], fill=LANDMARK_COLOR, width=2)
-            draw.text((x + r*2 + 2, y + 2), str(num), fill=LANDMARK_COLOR, font=font)
+            draw.line([(x - r*2, y), (x + r*2, y)],
+                      fill=LANDMARK_COLOR, width=2)
+            draw.line([(x, y - r*2), (x, y + r*2)],
+                      fill=LANDMARK_COLOR, width=2)
+            draw.text((x + r*2 + 2, y + 2), str(num),
+                      fill=LANDMARK_COLOR, font=font)
 
         img.save(outPath, 'PNG', optimize=True)
         return True
@@ -1899,20 +1968,29 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
 
         wb = openpyxl.Workbook()
 
-        HEADER_FONT = Font(name='B Nazanin', bold=True, size=12, color="000000")
+        HEADER_FONT = Font(name='B Nazanin', bold=True,
+                           size=12, color="000000")
         CELL_FONT = Font(name='B Nazanin', size=11)
         INDEX_FONT = Font(name='B Nazanin', bold=True, size=11, color="1F4E78")
         TITLE_FONT = Font(name='B Nazanin', bold=True, size=16, color="2F5496")
-        SECTION_FONT = Font(name='B Nazanin', bold=True, size=13, color="C00000")
-        SUBHEADER_FONT = Font(name='B Nazanin', bold=True, size=11, color="7F6000")
+        SECTION_FONT = Font(name='B Nazanin', bold=True,
+                            size=13, color="C00000")
+        SUBHEADER_FONT = Font(name='B Nazanin', bold=True,
+                              size=11, color="7F6000")
 
-        HEADER_FILL = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
-        INDEX_FILL = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
-        SECTION_FILL = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
-        SUBHEADER_FILL = PatternFill(start_color="FCE4B5", end_color="FCE4B5", fill_type="solid")
+        HEADER_FILL = PatternFill(
+            start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        INDEX_FILL = PatternFill(start_color="DDEBF7",
+                                 end_color="DDEBF7", fill_type="solid")
+        SECTION_FILL = PatternFill(
+            start_color="FFE699", end_color="FFE699", fill_type="solid")
+        SUBHEADER_FILL = PatternFill(
+            start_color="FCE4B5", end_color="FCE4B5", fill_type="solid")
 
-        CENTER = Alignment(horizontal='center', vertical='center', wrap_text=True, readingOrder=2)
-        RIGHT = Alignment(horizontal='right', vertical='center', wrap_text=True, readingOrder=2)
+        CENTER = Alignment(horizontal='center',
+                           vertical='center', wrap_text=True, readingOrder=2)
+        RIGHT = Alignment(horizontal='right', vertical='center',
+                          wrap_text=True, readingOrder=2)
         BORDER = Border(
             left=Side(style='thin', color='808080'), right=Side(style='thin', color='808080'),
             top=Side(style='thin', color='808080'), bottom=Side(style='thin', color='808080')
@@ -1924,12 +2002,12 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         def buildAnalysisSheet(sheetName, rows, viewKey):
             from openpyxl.drawing.image import Image as XLImage
             from PIL import Image as PILImage
-            
+
             ws = wb.create_sheet(sheetName)
             ws.sheet_view.rightToLeft = True
-            
+
             current_row = 1
-            
+
             # Embed annotated image at top
             if imagePaths.get(viewKey) is not None:
                 temp_dir = tempfile.mkdtemp(prefix="fla_xlsx_")
@@ -1940,8 +2018,10 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                         ow, oh = img.size
                         max_w, max_h = 500, 700
                         scale = min(max_w / ow, max_h / oh)
-                        img.thumbnail((int(ow * scale), int(oh * scale)), PILImage.LANCZOS)
-                        resized = os.path.join(temp_dir, f"{viewKey}_resized.png")
+                        img.thumbnail(
+                            (int(ow * scale), int(oh * scale)), PILImage.LANCZOS)
+                        resized = os.path.join(
+                            temp_dir, f"{viewKey}_resized.png")
                         img.save(resized, 'PNG')
                         xl_img = XLImage(resized)
                         xl_img.anchor = f"A{current_row}"
@@ -1950,7 +2030,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                         current_row += rows_for_image + 2
                     except Exception as e:
                         logging.error(f"Image embed failed for {viewKey}: {e}")
-            
+
             # Header row
             for col_idx, col_name in enumerate(COLUMNS, start=1):
                 c = ws.cell(row=current_row, column=col_idx, value=col_name)
@@ -1960,31 +2040,43 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                 c.border = BORDER
             header_row = current_row
             current_row += 1
-            
+
             # Data rows
             for row in rows:
                 is_section = row.get('_is_section', False)
                 is_header = row.get('_is_header', False)
-                
+
                 for col_idx, col_name in enumerate(COLUMNS, start=1):
                     value = row.get(col_name, "")
                     c = ws.cell(row=current_row, column=col_idx, value=value)
-                    c.alignment = CENTER if col_idx != 3 else RIGHT
+
+                    # ── TEXT DIRECTION & ALIGNMENT LOGIC ──
+                    if col_idx == 2:  # 'اندازه گیری' column
+                        if self._has_persian_digits(value):
+                            align = Alignment(
+                                horizontal='center', vertical='center', wrap_text=True, readingOrder=2)  # RTL
+                        else:
+                            align = Alignment(
+                                horizontal='center', vertical='center', wrap_text=True, readingOrder=1)  # LTR
+                    elif col_idx == 1:
+                        align = CENTER
+                    else:
+                        align = RIGHT
+
+                    c.alignment = align
                     c.border = BORDER
-                    
+
                     if is_section:
                         c.font = SECTION_FONT
                         c.fill = SECTION_FILL
                         c.alignment = CENTER
                     elif is_header:
-                        # Sub-header row: highlight the "measurement" cell (reference formula)
                         if col_idx == 1:
                             c.font = INDEX_FONT
                             c.fill = INDEX_FILL
                         elif col_idx == 2:
                             c.font = SUBHEADER_FONT
                             c.fill = SUBHEADER_FILL
-                            c.alignment = CENTER
                         else:
                             c.font = CELL_FONT
                     elif col_idx == 1 and value:
@@ -1992,33 +2084,38 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                         c.fill = INDEX_FILL
                     else:
                         c.font = CELL_FONT
-                
+
                 if is_section:
                     ws.merge_cells(start_row=current_row, start_column=1,
                                    end_row=current_row, end_column=len(COLUMNS))
                 current_row += 1
-            
+
             widths = {1: 32, 2: 42, 3: 60}
             for col, w in widths.items():
                 ws.column_dimensions[get_column_letter(col)].width = w
             ws.row_dimensions[header_row].height = 32
-            
+
         default_sheet = wb.active
         wb.remove(default_sheet)
-        
-        buildAnalysisSheet("Frontal",       self.buildFrontalRows(coords.get('frontal', {}), ppm),        'frontal')
-        buildAnalysisSheet("Right Profile", self.buildProfileRows(coords.get('right', {}),   ppm),        'right')
-        buildAnalysisSheet("Left Profile",  self.buildProfileRows(coords.get('left', {}),    ppm),        'left')
-        buildAnalysisSheet("Smile",         self.buildSmileRows(  coords.get('smile', {}),   ppm),        'smile')
-        
-        self._buildInformationSheet(wb, patientName, doctorName, date, coords, TITLE_FONT, CELL_FONT, RIGHT)
+
+        buildAnalysisSheet("Frontal",       self.buildFrontalRows(
+            coords.get('frontal', {}), ppm),        'frontal')
+        buildAnalysisSheet("Right Profile", self.buildProfileRows(
+            coords.get('right', {}),   ppm),        'right')
+        buildAnalysisSheet("Left Profile",  self.buildProfileRows(
+            coords.get('left', {}),    ppm),        'left')
+        buildAnalysisSheet("Smile",         self.buildSmileRows(
+            coords.get('smile', {}),   ppm),        'smile')
+
+        self._buildInformationSheet(
+            wb, patientName, doctorName, date, coords, TITLE_FONT, CELL_FONT, RIGHT)
 
         wb.save(filePath)
         logging.info(f"Excel saved: {filePath}")
 
     def _buildInformationSheet(self, wb, patientName, doctorName, date, coords, title_font, cell_font, right):
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-        
+
         ws = wb.create_sheet("Information")
         ws.sheet_view.rightToLeft = True
 
@@ -2029,7 +2126,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         ws.row_dimensions[1].height = 30
 
         ws['A3'] = "اطلاعات بیمار"
-        ws['A3'].font = Font(name='B Nazanin', bold=True, size=14, color="2F5496")
+        ws['A3'].font = Font(name='B Nazanin', bold=True,
+                             size=14, color="2F5496")
         ws['A3'].alignment = right
         ws.merge_cells('A3:D3')
 
@@ -2051,7 +2149,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         ws.cell(row=current_row, column=1, value="مختصات لندمارک ها (پیکسل)").font = \
             Font(name='B Nazanin', bold=True, size=14, color="2F5496")
         ws.cell(row=current_row, column=1).alignment = right
-        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=4)
+        ws.merge_cells(start_row=current_row, start_column=1,
+                       end_row=current_row, end_column=4)
         current_row += 2
 
         view_names_fa = {
@@ -2061,9 +2160,12 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             'smile': "نمای لبخند"
         }
 
-        header_font_small = Font(name='B Nazanin', bold=True, size=11, color="FFFFFF")
-        header_fill_small = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        center_align = Alignment(horizontal='center', vertical='center', readingOrder=2)
+        header_font_small = Font(
+            name='B Nazanin', bold=True, size=11, color="FFFFFF")
+        header_fill_small = PatternFill(
+            start_color="4472C4", end_color="4472C4", fill_type="solid")
+        center_align = Alignment(
+            horizontal='center', vertical='center', readingOrder=2)
         border = Border(
             left=Side(style='thin'), right=Side(style='thin'),
             top=Side(style='thin'), bottom=Side(style='thin')
@@ -2074,11 +2176,14 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             if not viewCoords:
                 continue
 
-            c = ws.cell(row=current_row, column=1, value=view_names_fa.get(viewKey, viewKey))
+            c = ws.cell(row=current_row, column=1,
+                        value=view_names_fa.get(viewKey, viewKey))
             c.font = Font(name='B Nazanin', bold=True, size=12, color="C00000")
             c.alignment = center_align
-            c.fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-            ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=3)
+            c.fill = PatternFill(start_color="FFF2CC",
+                                 end_color="FFF2CC", fill_type="solid")
+            ws.merge_cells(start_row=current_row, start_column=1,
+                           end_row=current_row, end_column=3)
             current_row += 1
 
             for col_idx, header in enumerate(["شماره لندمارک", "X (پیکسل)", "Y (پیکسل)"], start=1):
@@ -2108,8 +2213,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         ws.column_dimensions['D'].width = 20
 
     def _rtl(self, text):
-        import arabic_reshaper # type: ignore
-        from bidi.algorithm import get_display # type: ignore
+        import arabic_reshaper  # type: ignore
+        from bidi.algorithm import get_display  # type: ignore
         if not text:
             return ""
         try:
@@ -2119,10 +2224,10 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             return str(text)
 
     def _registerPersianFont(self):
-        from reportlab.pdfbase import pdfmetrics # type: ignore
-        from reportlab.pdfbase.ttfonts import TTFont # type: ignore
+        from reportlab.pdfbase import pdfmetrics  # type: ignore
+        from reportlab.pdfbase.ttfonts import TTFont  # type: ignore
         font_name = 'PersianFont'
-        
+
         font_candidates = [
             r"C:\Windows\Fonts\tahoma.ttf",
             r"C:\Windows\Fonts\arial.ttf",
@@ -2153,12 +2258,13 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
     # PDF EXPORT — 3 columns
     # =============================================
     def exportToPDF(self, coords, imagePaths, ppm, filePath, patientName, doctorName, date):
-        from reportlab.lib.pagesizes import A4, landscape # type: ignore
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle # type: ignore
-        from reportlab.lib.units import cm # type: ignore
-        from reportlab.lib import colors # type: ignore
-        from reportlab.lib.enums import TA_CENTER, TA_RIGHT # type: ignore
-        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle, PageBreak) # type: ignore
+        from reportlab.lib.pagesizes import A4, landscape  # type: ignore
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle  # type: ignore
+        from reportlab.lib.units import cm  # type: ignore
+        from reportlab.lib import colors  # type: ignore
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT  # type: ignore
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle, PageBreak)  # type: ignore
         from PIL import Image
 
         font_name = self._registerPersianFont()
@@ -2201,8 +2307,10 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         story = []
         # --- Cover page ---
         story.append(Spacer(1, 3*cm))
-        story.append(Paragraph(self._rtl("گزارش تحلیل لندمارک های صورت"), title_style))
-        story.append(Paragraph("Facial Landmark Analysis Report", subtitle_style))
+        story.append(
+            Paragraph(self._rtl("گزارش تحلیل لندمارک های صورت"), title_style))
+        story.append(
+            Paragraph("Facial Landmark Analysis Report", subtitle_style))
         story.append(Spacer(1, 2*cm))
 
         info_data = [
@@ -2224,17 +2332,22 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         story.append(info_table)
         story.append(Spacer(1, 4*cm))
         story.append(Paragraph(
-            self._rtl("Generated by Facial Landmark Analysis | Engine Developed by Morteza Hajiabadi"),
+            self._rtl(
+                "Generated by Facial Landmark Analysis | Engine Developed by Morteza Hajiabadi"),
             body_style
         ))
         story.append(PageBreak())
 
         # --- Analysis pages ---
         view_order = [
-            ('frontal', "نمای روبرو (Frontal)", self.buildFrontalRows, coords.get('frontal', {})),
-            ('right',   "نمای نیمرخ راست",       self.buildProfileRows, coords.get('right', {})),
-            ('left',    "نمای نیمرخ چپ",         self.buildProfileRows, coords.get('left', {})),
-            ('smile',   "نمای لبخند (Smile)",    self.buildSmileRows,   coords.get('smile', {})),
+            ('frontal', "نمای روبرو (Frontal)",
+             self.buildFrontalRows, coords.get('frontal', {})),
+            ('right',   "نمای نیمرخ راست",
+             self.buildProfileRows, coords.get('right', {})),
+            ('left',    "نمای نیمرخ چپ",
+             self.buildProfileRows, coords.get('left', {})),
+            ('smile',   "نمای لبخند (Smile)",
+             self.buildSmileRows,   coords.get('smile', {})),
         ]
 
         temp_dir = tempfile.mkdtemp(prefix="fla_pdf_")
@@ -2271,7 +2384,8 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
 
             story.append(PageBreak())
 
-        doc.build(story, onFirstPage=self._pdfFooter, onLaterPages=self._pdfFooter)
+        doc.build(story, onFirstPage=self._pdfFooter,
+                  onLaterPages=self._pdfFooter)
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)
         except:
@@ -2280,12 +2394,14 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         logging.info(f"PDF saved: {filePath}")
 
     def _addAnalysisTable(self, story, rows, font_name, bold_font):
-        from reportlab.lib.units import cm # type: ignore
-        from reportlab.lib import colors # type: ignore
-        from reportlab.platypus import (Spacer, Table, TableStyle, Paragraph) # type: ignore
-        from reportlab.lib.styles import ParagraphStyle # type: ignore
-        from reportlab.lib.enums import TA_RIGHT, TA_CENTER # type: ignore
+        from reportlab.lib.units import cm  # type: ignore
+        from reportlab.lib import colors  # type: ignore
+        from reportlab.platypus import (
+            Spacer, Table, TableStyle, Paragraph)  # type: ignore
+        from reportlab.lib.styles import ParagraphStyle  # type: ignore
+        from reportlab.lib.enums import TA_RIGHT, TA_CENTER  # type: ignore
 
+        
         # Wrapping style for long clinical interpretations
         wrap_style = ParagraphStyle(
             'Wrap', fontName=font_name, fontSize=8,
@@ -2296,9 +2412,16 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
             alignment=TA_CENTER, leading=11, textColor=colors.black,
         )
 
-        def P(text, center=False):
+        def P(text, center=False, is_measurement=False):
             style = wrap_center_style if center else wrap_style
-            return Paragraph(self._rtl(text) if text else "", style)
+            if not text:
+                return Paragraph("", style)
+            
+            # If it's a measurement cell without Persian digits, render standard LTR (skip _rtl)
+            if is_measurement and not self._has_persian_digits(text):
+                return Paragraph(str(text), wrap_center_style)
+            
+            return Paragraph(self._rtl(text), style)
 
         # Column order for RTL reading (rightmost first as seen): ایندکس | اندازه گیری | تفسیر کلینیکی
         # In reportlab, arrays are LTR, so first column is left-most on page.
@@ -2319,7 +2442,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
                 is_header = row.get('_is_header', False)
                 table_data.append([
                     P(row.get('تفسیر کلینیکی', '')),
-                    P(row.get('اندازه گیری', ''), center=True),
+                    P(row.get('اندازه گیری', ''), center=True, is_measurement=True),  # <-- updated
                     P(row.get('ایندکس', ''), center=True),
                 ])
                 if is_header:
@@ -2343,27 +2466,31 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         for row_idx in section_rows:
             style_cmds.extend([
                 ('SPAN', (0, row_idx), (-1, row_idx)),
-                ('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#FFE699')),
-                ('TEXTCOLOR', (0, row_idx), (-1, row_idx), colors.HexColor('#C00000')),
+                ('BACKGROUND', (0, row_idx), (-1, row_idx),
+                 colors.HexColor('#FFE699')),
+                ('TEXTCOLOR', (0, row_idx), (-1, row_idx),
+                 colors.HexColor('#C00000')),
                 ('ALIGN', (0, row_idx), (-1, row_idx), 'CENTER'),
             ])
 
         for row_idx in header_rows:
             # Highlight the "measurement" column (index 1) as the reference formula
-            style_cmds.append(('BACKGROUND', (1, row_idx), (1, row_idx), colors.HexColor('#FCE4B5')))
+            style_cmds.append(('BACKGROUND', (1, row_idx),
+                              (1, row_idx), colors.HexColor('#FCE4B5')))
 
         for i in range(1, len(table_data)):
             if i not in section_rows and i not in header_rows and i % 2 == 0:
-                style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#F5F5F5')))
+                style_cmds.append(
+                    ('BACKGROUND', (0, i), (-1, i), colors.HexColor('#F5F5F5')))
 
         table.setStyle(TableStyle(style_cmds))
         story.append(table)
         story.append(Spacer(1, 0.5*cm))
 
     def _pdfFooter(self, canvas, doc):
-        from reportlab.lib.pagesizes import A4, landscape # type: ignore
-        from reportlab.lib.units import cm # type: ignore
-        from reportlab.lib import colors # type: ignore
+        from reportlab.lib.pagesizes import A4, landscape  # type: ignore
+        from reportlab.lib.units import cm  # type: ignore
+        from reportlab.lib import colors  # type: ignore
         pw, ph = landscape(A4)
         canvas.saveState()
         canvas.setFont('Helvetica', 8)
@@ -2374,8 +2501,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic): # type: ignore
         canvas.drawRightString(pw - 1.5*cm, 0.6*cm, page_text)
         canvas.drawString(1.5*cm, 0.6*cm, "Facial Landmark Analysis")
         canvas.restoreState()
-        
-class FacialLandmarkAnalysisTest(ScriptedLoadableModuleTest): # type: ignore
+
+
+class FacialLandmarkAnalysisTest(ScriptedLoadableModuleTest):  # type: ignore
     def setUp(self):
         slicer.mrmlScene.Clear()
 
