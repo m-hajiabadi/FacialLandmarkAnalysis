@@ -1401,12 +1401,12 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             # Menton — L24
             if 24 in F:
                 d24 = F[24][0] - mid_x  # signed
-                if d24 > 1e-6:
-                    interp = "انحراف چانه یا مندیبل به سمت راست"
-                elif abs(d24) < 1e-6:
+                if d24 > 0:
+                    interp = "انحراف چانه یا مندیبل به سمت چپ"
+                elif d24 == 0:
                     interp = "چانه انحراف ندارد"
                 else:
-                    interp = "انحراف چانه یا مندیبل به سمت چپ"
+                    interp = "انحراف چانه یا مندیبل به سمت راست"
                 rows.append(self._row("",
                                       f"X24 - X̄ = {d24/ppm:.2f}",
                                       interp))
@@ -1562,7 +1562,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             elif cond_right_ok and not cond_left_ok:
                 interp = "نمایش اسکلرا در سمت چپ/ اکتروپیون پلک پایین چپ/ دفی شنسی ماگزیلا و میدفیس"
             else:
-                interp = "نمایش اسکلرا در هر دو سمت/ اکتروپیون دو طرفه/ دفی شنسی ماگزیلا و میدفیس"
+                interp = "نمابش اسکرا وجود ندارد"
             rows.append(self._row("نمایش اسکلرا",
                                   f"Y5={y5:.1f} | Y6={y6:.1f} | Y11={y11:.1f} | Y12={y12:.1f}",
                                   interp))
@@ -1599,13 +1599,13 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         if all(k in S for k in [1, 2, 6]):
             mid_face = (S[1][0] + S[2][0]) / 2  # |X2-X1|:2 reference
             x6 = S[6][0]
-            tol = 0.5  # px tolerance
+            tol = 0.0  # px tolerance
             if abs(x6 - mid_face) <= tol:
                 interp = "میدلاین دندانی ماگزیلا نسبت به میدلاین صورت on است"
             elif x6 > mid_face:
-                interp = "انحراف میدلاین دندانی ماگزیلا نسبت به صورت به سمت راست"
-            else:
                 interp = "انحراف میدلاین دندانی ماگزیلا نسبت به صورت به سمت چپ"
+            else:
+                interp = "انحراف میدلاین دندانی ماگزیلا نسبت به صورت به سمت راست"
             rows.append(self._row("میدلاین دندانی ماگزیلا به صورت",
                                   f"X6={x6/ppm:.2f} | (X1+X2)/2={mid_face/ppm:.2f}",
                                   interp))
@@ -1613,13 +1613,13 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         # ========== میدلاین دندانی مندیبل به چانه ==========
         if all(k in S for k in [4, 7]):
             x4, x7 = S[4][0], S[7][0]
-            tol = 0.5
+            tol = 0.0
             if abs(x4 - x7) <= tol:
                 interp = "میدلاین دندانی مندیبل نسبت به چانه on است"
             elif x4 < x7:
-                interp = "انحراف میدلاین دندانی مندیبل نسبت به چانه به سمت راست/ انحراف چانه به سمت چپ"
-            else:
                 interp = "انحراف میدلاین دندانی مندیبل نسبت به چانه به سمت چپ/ انحراف چانه به سمت راست"
+            else:
+                interp = "انحراف میدلاین دندانی مندیبل نسبت به چانه به سمت راست/ انحراف چانه به سمت چپ"
             rows.append(self._row("میدلاین دندانی مندیبل به چانه",
                                   f"X4={x4/ppm:.2f} | X7={x7/ppm:.2f}",
                                   interp))
@@ -1627,13 +1627,13 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         # ========== میدلاین دندانی ماگزیلا به مندیبل ==========
         if all(k in S for k in [6, 7]):
             x6, x7 = S[6][0], S[7][0]
-            tol = 0.5
+            tol = 0.0
             if abs(x6 - x7) <= tol:
                 interp = "میدلاین دندانی ماگزیلا و مندیبل نسبت به هم on است"
             elif x6 < x7:
-                interp = "انحراف میدلاین دندانی ماگزیلا و مندیبل نسبت به هم (میدلاین دندانی ماگزیلا به سمت چپ/ میدلاین دندانی مندیبل به سمت راست)"
-            else:
                 interp = "انحراف میدلاین دندانی ماگزیلا و مندیبل نسبت به هم (میدلاین دندانی ماگزیلا به سمت راست/ میدلاین دندانی مندیبل به سمت چپ)"
+            else:
+                interp = "انحراف میدلاین دندانی ماگزیلا و مندیبل نسبت به هم (میدلاین دندانی ماگزیلا به سمت چپ/ میدلاین دندانی مندیبل به سمت راست)"
             rows.append(self._row("میدلاین دندانی ماگزیلا به مندیبل",
                                   f"X6={x6/ppm:.2f} | X7={x7/ppm:.2f}",
                                   interp))
@@ -1670,7 +1670,12 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
     # =============================================
     # PROFILE rows (lateral view — right or left)
     # =============================================
-    def buildProfileRows(self, L, ppm, gender='male'):
+    def buildProfileRows(self, L, ppm, gender='male', profile_side='left'):
+        print(len(L))
+        print(L)
+        L2 = L[1]
+        L = L[0]
+            
         rows = []
 
         # ========== یک سوم های افقی ==========
@@ -1723,9 +1728,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             if 125 <= angle <= 135:
                 interp = "نرمال"
             elif angle < 125:
-                interp = "کمتر از نرمال/برجستگی بیشتر گلابلا/پروجکشن بیشتر بینی/ low radix"
+                interp = "کمتر از نزمال/برجستگی بیشتر گلابلا/پروجکشن بیشتر بینی/ low radix"
             else:
-                interp = "بیشتر از نرمال/برجستگی کمتر گلابلا/ پروجکشن کمتر بینی"
+                interp = "بیشتر از نزمال/برجستگی کمتر گلابلا/ پروجکشن کمتر بینی"
             rows.append(self._row("زاویه نازوفرونتال",
                                   f"{angle:.2f}°",
                                   interp))
@@ -1770,9 +1775,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             if lo <= angle <= hi:
                 interp = "نرمال"
             elif angle > hi:
-                interp = "بیشتر از نرمال/ساپورت کم لب بالا/ رتروژن دندان های قدامی ماگزیلا/ کاهش بعد قدامی خلفی ماگزیلا/ روتیشن نوک بینی"
+                interp = "بیشتر از نزمال/ساپورت کم لب بالا/ رتروژن دندان های قدامی ماگزیلا/ کاهش بعد قدامی خلفی ماگزیلا/ روتیشن نوک بینی"
             else:
-                interp = "کمتر از نرمال/ساپورت زیاد لب بالا/ پروتروژن دندان های قدامی ماگزیلا/ افزایش بعد قدامی خلفی ماگزیلا/ افتادگی نوک بینی"
+                interp = "کمتر از نزمال/ساپورت زیاد لب بالا/ پروتروژن دندان های قدامی ماگزیلا/ افزایش بعد قدامی خلفی ماگزیلا/ افتادگی نوک بینی"
             rows.append(self._row("زاویه نازولیبیال",
                                   f"{angle:.2f}°",
                                   interp))
@@ -1780,40 +1785,57 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         # ========== پروجکشن لب بالا به لب پایین ==========
         if all(k in L for k in [7, 8]):
             diff = (L[7][0] - L[8][0]) / ppm
-            # NOTE: sign convention depends on right vs left profile
-            if diff > 0:
+            X7 = L[7][0]
+            X8 = L[8][0]
+            if (X7 > X8 and profile_side=='right') or (X7 < X8 and profile_side=='left'):
                 interp = "لب بالا جلوتر از لب پایین است/ تمایل به رابطه اسکلتال کلاس یک یا دو"
-            else:
+            elif (X7 < X8 and profile_side=='right') or (X7 > X8 and profile_side=='left'):
                 interp = "لب پایین جلوتر از لب بالا است/ تمایل به رابطه اسکلتال کلاس سه"
+            else:
+                interp = ""
             rows.append(self._row("پروجکشن لب بالا به لب پایین",
                                   f"X7-X8 = {diff:.2f}",
                                   interp))
 
         # ========== پروجکشن لب بالا و پایین نسبت به صورت (E-line) ==========
         if all(k in L for k in [5, 7, 8, 10]):
-            d7 = self.pt_line_dist(L[7], L[5], L[10]) / ppm
-            d8 = self.pt_line_dist(L[8], L[5], L[10]) / ppm
+            if profile_side == 'right':
+                d7_R = self.pt_line_dist(L[7], L[5], L[10]) / ppm
+                d7_L = self.pt_line_dist(L2[7], L2[5], L2[10]) / ppm
+                d8_R = self.pt_line_dist(L[8], L[5], L[10]) / ppm
+                d8_L = self.pt_line_dist(L2[8], L2[5], L2[10]) / ppm
+            elif profile_side == 'left':
+                d7_L = self.pt_line_dist(L[7], L[5], L[10]) / ppm
+                d7_R = self.pt_line_dist(L2[7], L2[5], L2[10]) / ppm
+                d8_L = self.pt_line_dist(L[8], L[5], L[10]) / ppm
+                d8_R = self.pt_line_dist(L2[8], L2[5], L2[10]) / ppm
+                
 
-            if d7 > 0.5:
-                interp7 = "لب بالا بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
-            elif d7 < -0.5:
-                interp7 = "لب بالا عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
+            if d7_R > 0 and d7_L < 0:
+                interp = "لب بالا بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
+            elif d7_R < 0 and d7_L > 0:
+                interp = "لب بالا عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
+            elif d8_R > 0 and d8_L < 0:
+                interp = "لب پایین بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
+            elif d8_R < 0 and d8_L > 0:
+                interp = "لب پایین عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
             else:
-                interp7 = "لب بالا در حد نرمال نسبت به E-line"
+                interp = "نرمال"
 
-            if d8 > 0.5:
-                interp8 = "لب پایین بیرون زده تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس سه"
-            elif d8 < -0.5:
-                interp8 = "لب پایین عقب تر از حد نرمال/ تمایل به رابطه اسکلتال کلاس دو"
+            if profile_side == "right":
+                rows.append(self._row("پروجکشن لب بالا و پایین نسبت به صورت",
+                                    f"Distance of X7 from the 5-10 line = {d7_R:.2f}",
+                                    interp))
+                rows.append(self._row("",
+                                  f"Distance of X8 from the 5-10 line = {d8_R:.2f}",
+                                  "-"))
             else:
-                interp8 = "لب پایین در حد نرمال نسبت به E-line"
-
-            rows.append(self._row("پروجکشن لب بالا و پایین نسبت به صورت",
-                                  f"Distance of X7 from the 5-10 line = {d7:.2f}",
-                                  interp7))
-            rows.append(self._row("",
-                                  f"Distance of X8 from the 5-10 line = {d8:.2f}",
-                                  interp8))
+                rows.append(self._row("پروجکشن لب بالا و پایین نسبت به صورت",
+                                    f"Distance of X7 from the 5-10 line = {d7_L:.2f}",
+                                    interp))
+                rows.append(self._row("",
+                                    f"Distance of X8 from the 5-10 line = {d8_L:.2f}",
+                                    "-"))
 
         # ========== زاویه منتولیبیال ==========
         if all(k in L for k in [8, 9, 10]):
@@ -2116,9 +2138,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         buildAnalysisSheet("Frontal",       self.buildFrontalRows(
             coords.get('frontal', {}), ppm),        'frontal')
         buildAnalysisSheet("Right Profile", self.buildProfileRows(
-            coords.get('right', {}),   ppm, gender=gender),        'right')
+            [coords.get('right', {}), coords.get('left', {})],   ppm, gender=gender, profile_side='right'),        'right')
         buildAnalysisSheet("Left Profile",  self.buildProfileRows(
-            coords.get('left', {}),    ppm, gender=gender),        'left')
+            [coords.get('left', {}), coords.get('right', {})],    ppm, gender=gender, profile_side='left'),        'left')
         buildAnalysisSheet("Smile",         self.buildSmileRows(
             coords.get('smile', {}),   ppm),        'smile')
 
@@ -2358,12 +2380,14 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             ('frontal', "نمای روبرو (Frontal)",
                 lambda c, p: self.buildFrontalRows(c, p), coords.get('frontal', {})),
             ('right', "نمای نیمرخ راست",
-                lambda c, p: self.buildProfileRows(c, p, gender=gender), coords.get('right', {})),
+                lambda c, p: self.buildProfileRows(c, p, gender=gender), [coords.get('right', {}), coords.get('left', {})]),
             ('left', "نمای نیمرخ چپ",
-                lambda c, p: self.buildProfileRows(c, p, gender=gender), coords.get('left', {})),
+                lambda c, p: self.buildProfileRows(c, p, gender=gender), [coords.get('left', {}), coords.get('right', {})]),
             ('smile', "نمای لبخند (Smile)",
                 lambda c, p: self.buildSmileRows(c, p), coords.get('smile', {})),
         ]
+        
+
 
         temp_dir = tempfile.mkdtemp(prefix="fla_pdf_")
 
@@ -2376,7 +2400,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
 
             # Image (smaller since we're in landscape and need room for the wide table)
             out_path = os.path.join(temp_dir, f"{viewKey}_pdf.png")
-            if self.createAnnotatedImage(viewKey, imagePaths[viewKey], viewCoords, out_path):
+            if self.createAnnotatedImage(viewKey, imagePaths[viewKey], viewCoords if viewKey in ["frontal", "smile"] else viewCoords[0], out_path):
                 try:
                     pil_img = Image.open(out_path)
                     ow, oh = pil_img.size
