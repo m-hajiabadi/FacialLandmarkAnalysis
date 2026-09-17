@@ -402,12 +402,19 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
         patientCollapsible.text = "اطلاعات بیمار"
         self.layout.addWidget(patientCollapsible)
         patientLayout = qt.QFormLayout(patientCollapsible)
+        
         self.patientNameEdit = qt.QLineEdit()
         patientLayout.addRow(":نام بیمار", self.patientNameEdit)
+        
         self.doctorNameEdit = qt.QLineEdit()
         self.doctorNameEdit.setText("دکتر سید علیرضا پرهیز")
         patientLayout.addRow(":نام پزشک", self.doctorNameEdit)
 
+        self.genderCombo = qt.QComboBox()
+        self.genderCombo.addItems(["مرد", "زن"])   # index 0 = male, 1 = female
+        self.genderCombo.setCurrentIndex(0)
+        patientLayout.addRow(":جنسیت", self.genderCombo)
+        
         import jdatetime  # type: ignore
 
         self.dateEdit = qt.QLineEdit()
@@ -603,6 +610,10 @@ class FacialLandmarkAnalysisWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         return env
 
+    def getPatientGender(self):
+        """Return 'male' or 'female' based on the gender dropdown."""
+        return 'female' if self.genderCombo.currentIndex == 1 else 'male'
+    
     # ── Landmark definitions per view ──
     def getFrontalLandmarks(self):
         return [(i, f"L{i}") for i in range(1, 26)]
@@ -1143,11 +1154,13 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
         if not filePath:
             return
 
+        gender = self.getPatientGender()
         self.logic.exportToExcel(
             coords, self.imagePaths, ppm, filePath,
             self.patientNameEdit.text,
             self.doctorNameEdit.text,
-            self.dateEdit.text
+            self.dateEdit.text,
+            gender=gender
         )
         slicer.util.infoDisplay(f"✓ فایل اکسل ذخیره شد!\n\n{filePath}")
 
@@ -1176,11 +1189,13 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
             return
 
         try:
+            gender = self.getPatientGender()
             self.logic.exportToPDF(
                 coords, self.imagePaths, ppm, filePath,
                 self.patientNameEdit.text,
                 self.doctorNameEdit.text,
-                self.dateEdit.text
+                self.dateEdit.text,
+                gender=gender
             )
             slicer.util.infoDisplay(f"✓ گزارش PDF ذخیره شد!\n\n{filePath}")
         except Exception as e:
@@ -1216,17 +1231,20 @@ runpy.run_path('{infer_script_clean}', run_name='__main__')
         pdf_path = os.path.join(dirPath, f"{patient}_Report.pdf")
 
         try:
+            gender = self.getPatientGender()
             self.logic.exportToExcel(
                 coords, self.imagePaths, ppm, xlsx_path,
                 self.patientNameEdit.text,
                 self.doctorNameEdit.text,
-                self.dateEdit.text
+                self.dateEdit.text,
+                gender=gender
             )
             self.logic.exportToPDF(
                 coords, self.imagePaths, ppm, pdf_path,
                 self.patientNameEdit.text,
                 self.doctorNameEdit.text,
-                self.dateEdit.text
+                self.dateEdit.text,
+                gender=gender
             )
             slicer.util.infoDisplay(
                 f"✓ هر دو فایل با موفقیت ذخیره شدند!\n\n"
@@ -1318,11 +1336,10 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         # ========== قرینگی افقی صورت ==========
         if 1 in F and 7 in F:
             mid_x = (F[1][0] + F[7][0]) / 2
-            x_bar = abs(F[7][0] - F[1][0]) / 2 / ppm  # x̄ = |X7-X1|:2
 
             # Header row explaining the reference formula
             rows.append(self._row("قرینگی افقی صورت",
-                                  f"x̄ = |X7-X1|:2 = {x_bar:.2f}",
+                                  f"x̄ = |X7<->X1|:2 = {mid_x:.2f}",
                                   "", is_header=True))
 
             # Malar (زدگی گونه) — L15, L16
@@ -1397,10 +1414,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         # ========== قرینگی عمودی صورت ==========
         if 1 in F and 7 in F:
             y_bar_ref = (F[1][1] + F[7][1]) / 2
-            y_bar_val = abs(F[7][1] - F[1][1]) / 2 / ppm  # Ȳ = |Y7-Y1|:2
 
             rows.append(self._row("قرینگی عمودی صورت",
-                                  f"Ȳ = |Y7-Y1|:2 = {y_bar_val:.2f}",
+                                  f"Ȳ = |Y7<->Y1|:2 = {y_bar_ref:.2f}",
                                   "", is_header=True))
 
             # L15, L16 — malar height
@@ -1534,7 +1550,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
                                   f"|X20-X19|={mouth_w:.2f} | |X8-X2|={iris_w:.2f}",
                                   interp))
 
-        # ========== نمایش اسکرا ==========
+        # ========== نمایش اسکلرا ==========
         if all(k in F for k in [5, 6, 11, 12]):
             y5, y6, y11, y12 = F[5][1], F[6][1], F[11][1], F[12][1]
             cond_right_ok = y6 <= y5
@@ -1542,24 +1558,23 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             if cond_right_ok and cond_left_ok:
                 interp = "نرمال"
             elif not cond_right_ok and cond_left_ok:
-                interp = "نمایش اسکرا در سمت راست/ اکتروپیون پلک پایین راست/ دفی شنسی ماگزیلا و میدفیس"
+                interp = "نمایش اسکلرا در سمت راست/ اکتروپیون پلک پایین راست/ دفی شنسی ماگزیلا و میدفیس"
             elif cond_right_ok and not cond_left_ok:
-                interp = "نمایش اسکرا در سمت چپ/ اکتروپیون پلک پایین چپ/ دفی شنسی ماگزیلا و میدفیس"
+                interp = "نمایش اسکلرا در سمت چپ/ اکتروپیون پلک پایین چپ/ دفی شنسی ماگزیلا و میدفیس"
             else:
-                interp = "نمایش اسکرا در هر دو سمت/ اکتروپیون دو طرفه/ دفی شنسی ماگزیلا و میدفیس"
-            rows.append(self._row("نمایش اسکرا",
+                interp = "نمایش اسکلرا در هر دو سمت/ اکتروپیون دو طرفه/ دفی شنسی ماگزیلا و میدفیس"
+            rows.append(self._row("نمایش اسکلرا",
                                   f"Y5={y5:.1f} | Y6={y6:.1f} | Y11={y11:.1f} | Y12={y12:.1f}",
                                   interp))
 
         # ========== کنت ==========
         if all(k in F for k in [1, 7, 19, 20]):
-            y_bar_val = abs(F[7][1] - F[1][1]) / 2 / ppm
             y_bar_ref = (F[1][1] + F[7][1]) / 2
             d19 = abs(F[19][1] - y_bar_ref) / ppm
             d20 = abs(F[20][1] - y_bar_ref) / ppm
 
             rows.append(self._row("کنت",
-                                  f"Ȳ = |Y7-Y1|:2 = {y_bar_val:.2f}",
+                                  f"Ȳ = |Y7-Y1|:2 = {y_bar_ref:.2f}",
                                   "", is_header=True))
 
             if abs(d19 - d20) < 1e-6:
@@ -1708,9 +1723,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             if 125 <= angle <= 135:
                 interp = "نرمال"
             elif angle < 125:
-                interp = "برجستگی بیشتر گلابلا/ پروجکشن بیشتر بینی/ low radix"
+                interp = "کمتر از نرمال/برجستگی بیشتر گلابلا/پروجکشن بیشتر بینی/ low radix"
             else:
-                interp = "برجستگی کمتر گلابلا/ پروجکشن کمتر بینی"
+                interp = "بیشتر از نرمال/برجستگی کمتر گلابلا/ پروجکشن کمتر بینی"
             rows.append(self._row("زاویه نازوفرونتال",
                                   f"{angle:.2f}°",
                                   interp))
@@ -1755,9 +1770,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
             if lo <= angle <= hi:
                 interp = "نرمال"
             elif angle > hi:
-                interp = "ساپورت کم لب بالا/ رتروژن دندان های قدامی ماگزیلا/ کاهش بعد قدامی خلفی ماگزیلا/ روتیشن نوک بینی"
+                interp = "بیشتر از نرمال/ساپورت کم لب بالا/ رتروژن دندان های قدامی ماگزیلا/ کاهش بعد قدامی خلفی ماگزیلا/ روتیشن نوک بینی"
             else:
-                interp = "ساپورت زیاد لب بالا/ پروتروژن دندان های قدامی ماگزیلا/ افزایش بعد قدامی خلفی ماگزیلا/ افتادگی نوک بینی"
+                interp = "کمتر از نرمال/ساپورت زیاد لب بالا/ پروتروژن دندان های قدامی ماگزیلا/ افزایش بعد قدامی خلفی ماگزیلا/ افتادگی نوک بینی"
             rows.append(self._row("زاویه نازولیبیال",
                                   f"{angle:.2f}°",
                                   interp))
@@ -1961,7 +1976,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
     # =============================================
     # EXCEL EXPORT — 3 columns
     # =============================================
-    def exportToExcel(self, coords, imagePaths, ppm, filePath, patientName, doctorName, date):
+    def exportToExcel(self, coords, imagePaths, ppm, filePath, patientName, doctorName, date, gender='male'):
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         from openpyxl.utils import get_column_letter
@@ -2101,9 +2116,9 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         buildAnalysisSheet("Frontal",       self.buildFrontalRows(
             coords.get('frontal', {}), ppm),        'frontal')
         buildAnalysisSheet("Right Profile", self.buildProfileRows(
-            coords.get('right', {}),   ppm),        'right')
+            coords.get('right', {}),   ppm, gender=gender),        'right')
         buildAnalysisSheet("Left Profile",  self.buildProfileRows(
-            coords.get('left', {}),    ppm),        'left')
+            coords.get('left', {}),    ppm, gender=gender),        'left')
         buildAnalysisSheet("Smile",         self.buildSmileRows(
             coords.get('smile', {}),   ppm),        'smile')
 
@@ -2257,7 +2272,7 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
     # =============================================
     # PDF EXPORT — 3 columns
     # =============================================
-    def exportToPDF(self, coords, imagePaths, ppm, filePath, patientName, doctorName, date):
+    def exportToPDF(self, coords, imagePaths, ppm, filePath, patientName, doctorName, date, gender='male'):
         from reportlab.lib.pagesizes import A4, landscape  # type: ignore
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle  # type: ignore
         from reportlab.lib.units import cm  # type: ignore
@@ -2341,13 +2356,13 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
         # --- Analysis pages ---
         view_order = [
             ('frontal', "نمای روبرو (Frontal)",
-             self.buildFrontalRows, coords.get('frontal', {})),
-            ('right',   "نمای نیمرخ راست",
-             self.buildProfileRows, coords.get('right', {})),
-            ('left',    "نمای نیمرخ چپ",
-             self.buildProfileRows, coords.get('left', {})),
-            ('smile',   "نمای لبخند (Smile)",
-             self.buildSmileRows,   coords.get('smile', {})),
+                lambda c, p: self.buildFrontalRows(c, p), coords.get('frontal', {})),
+            ('right', "نمای نیمرخ راست",
+                lambda c, p: self.buildProfileRows(c, p, gender=gender), coords.get('right', {})),
+            ('left', "نمای نیمرخ چپ",
+                lambda c, p: self.buildProfileRows(c, p, gender=gender), coords.get('left', {})),
+            ('smile', "نمای لبخند (Smile)",
+                lambda c, p: self.buildSmileRows(c, p), coords.get('smile', {})),
         ]
 
         temp_dir = tempfile.mkdtemp(prefix="fla_pdf_")
