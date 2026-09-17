@@ -1561,8 +1561,10 @@ class FacialLandmarkAnalysisLogic(ScriptedLoadableModuleLogic):  # type: ignore
                 interp = "نمایش اسکلرا در سمت راست/ اکتروپیون پلک پایین راست/ دفی شنسی ماگزیلا و میدفیس"
             elif cond_right_ok and not cond_left_ok:
                 interp = "نمایش اسکلرا در سمت چپ/ اکتروپیون پلک پایین چپ/ دفی شنسی ماگزیلا و میدفیس"
+            elif not cond_right_ok and not cond_left_ok:
+                interp = "نمایش اسکلرا در هر دو سمت/ اکتروپیون دو طرفه/ دفی شنسی ماگزیلا و میدفیس"
             else:
-                interp = "نمابش اسکرا وجود ندارد"
+                interp = "نمابش اسکلرا وجود ندارد"
             rows.append(self._row("نمایش اسکلرا",
                                   f"Y5={y5:.1f} | Y6={y6:.1f} | Y11={y11:.1f} | Y12={y12:.1f}",
                                   interp))
